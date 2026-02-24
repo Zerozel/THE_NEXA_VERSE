@@ -15,14 +15,13 @@ const { createClient } = require('@supabase/supabase-js');
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
 
 const client = new Client({
-  authStrategy: new LocalAuth(),
+  authStrategy: new LocalAuth(), // Saves the WhatsApp session so you don't scan QR every time
   puppeteer: {
     executablePath: '/usr/bin/chromium-browser',
     args: ['--no-sandbox', '--disable-setuid-sandbox']
   }
 });
 
-// Generate the QR Code in the terminal
 client.on('qr', (qr) => {
   console.log('\n=========================================');
   console.log('📱 SCAN THIS QR CODE WITH WHATSAPP 📱');
@@ -40,7 +39,7 @@ client.on('ready', () => {
 client.on('message', async message => {
   if (message.isStatus || message.from.includes('-')) return;
   
-  const from = message.from;
+  const from = message.from; 
   const text = message.body.trim();
   
   console.log(`\n📩 INCOMING [${from.replace('@c.us', '')}]: ${text}`);
@@ -66,8 +65,11 @@ client.on('message', async message => {
     }
     
     // --- PHASE C: ARTISAN FASTEST-FINGER CLAIM SYSTEM ---
-    if (text.toUpperCase().startsWith('ACCEPT ')) {
-      const jobId = text.split(' ')[1];
+    // We clean the text to remove any bold markdown (*) WhatsApp might add
+    const cleanText = text.replace(/\*/g, '').toUpperCase();
+    
+    if (cleanText.startsWith('ACCEPT ')) {
+      const jobId = cleanText.split(' ')[1]; 
       
       const { data: ticket } = await supabase.from('job_tickets').select('*').eq('job_id', jobId).single();
       
@@ -81,7 +83,13 @@ client.on('message', async message => {
       
       await message.reply('✅ *Job Claimed!* \n\nWe are asking the client for final approval. Please stand by, we will send you their contact shortly.');
       
-      const { data: artisanProfile } = await supabase.from('artisans').select('name, rating').eq('phone_number', from).single();
+      // FIX 1: Added .limit(1) to prevent the .single() crash since you have 3 profiles linked to one number
+      const { data: artisanProfile } = await supabase
+        .from('artisans')
+        .select('name, rating')
+        .eq('phone_number', from)
+        .limit(1)
+        .single();
       
       await supabase.from('users').update({ status: `AWAITING_APPROVAL_${jobId}` }).eq('phone_number', ticket.client_phone);
       
@@ -101,7 +109,6 @@ client.on('message', async message => {
         await supabase.from('job_tickets').update({ status: 'MATCHED' }).eq('job_id', jobId);
         await supabase.from('users').update({ status: 'IDLE' }).eq('phone_number', from);
         
-        // Final Client Message with Customer Service Contact appended
         await message.reply(`✅ *Match Confirmed!*\n\nYour artisan is ready. Please call or message them now:\n📞 *WhatsApp:* +${ticket.awarded_artisan.replace('@c.us', '')}\n\n💬 *Need help? Chat with Nexa Customer Service for any complaints: 09045955670*`);
         
         await client.sendMessage(
@@ -115,15 +122,21 @@ client.on('message', async message => {
       return;
     }
     
-    // --- PHASE E: THE CLIENT INTAKE FUNNEL (State Machine) ---
+    // --- FIX 2: PHASE E - ENQUIRY MODE LOOP ---
+    // This catches the user's inquiry text, saves it, and breaks them out of the loop
+    if (user.status === 'ENQUIRY_MODE') {
+      // Reset status to IDLE so they can use the bot again
+      await supabase.from('users').update({ status: 'IDLE' }).eq('phone_number', from);
+      return await message.reply('✅ *Your enquiry has been received!*\n\nA human agent will review this shortly. For immediate assistance or complaints, please chat directly with Nexa Customer Service at: *09045955670*\n\n(Reply "menu" anytime to start a new request).');
+    }
+
+    // --- PHASE F: THE CLIENT INTAKE FUNNEL (State Machine) ---
     
-    // 1. Wake Up the Bot (For New or Idle Users)
     if (user.status === 'NEW' || user.status === 'IDLE') {
       await supabase.from('users').update({ status: 'AWAITING_INTAKE_TYPE' }).eq('phone_number', from);
       return await message.reply('Welcome to *Nexa*! 🛠️\n\nAre you looking for a service or just asking a question?\nReply with a number:\n1️⃣ Service Call\n2️⃣ Make an Enquiry');
     }
     
-    // 2. Filter: Enquiry vs Service
     if (user.status === 'AWAITING_INTAKE_TYPE') {
       if (text === '1') {
         await supabase.from('users').update({ status: 'AWAITING_CATEGORY' }).eq('phone_number', from);
@@ -136,7 +149,6 @@ client.on('message', async message => {
       }
     }
     
-    // 3. Collect Category
     if (user.status === 'AWAITING_CATEGORY') {
       const categories = { '1': 'Electrical', '2': 'Plumbing', '3': 'Carpentry' };
       if (categories[text]) {
@@ -147,18 +159,16 @@ client.on('message', async message => {
       }
     }
     
-    // 4. Collect Location
     if (user.status.startsWith('AWAITING_LOCATION_')) {
       const category = user.status.split('_')[2];
       await supabase.from('users').update({ status: `AWAITING_DESC_${category}_${text}` }).eq('phone_number', from);
       return await message.reply('📍 Location saved.\n\nFinally, please briefly describe the issue (e.g., "Sparking wall socket" or "Broken pipe").');
     }
     
-    // 5. Collect Description & Trigger the Broadcast Engine
     if (user.status.startsWith('AWAITING_DESC_')) {
       const parts = user.status.split('_');
       const category = parts[2];
-      const location = parts.slice(3).join('_');
+      const location = parts.slice(3).join('_'); 
       const description = text;
       
       const { data: job, error: jobError } = await supabase.from('job_tickets').insert([{
@@ -201,7 +211,7 @@ client.on('message', async message => {
           `🚨 *FAST MATCH ALERT!* 🚨\n\n*Job ID:* #${job.job_id}\n*Category:* ${category}\n*Location:* ${location}\n*Issue:* ${description}\n\n*(First to accept gets the client)*\nReply *ACCEPT ${job.job_id}* to claim this job.`
         );
       }
-      
+    
       return;
     }
     
