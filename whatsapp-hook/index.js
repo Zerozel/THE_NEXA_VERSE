@@ -1,5 +1,5 @@
 // ============================================================================
-// NEXA DISPATCH BOT - PROOF OF CONCEPT ENGINE
+// NEXA DISPATCH BOT - PROOF OF CONCEPT ENGINE (V1.1 - HARDENED)
 // Architecture: Node.js + whatsapp-web.js + Supabase
 // Design Pattern: Finite State Machine & Broadcast-Claim Dispatch
 // ============================================================================
@@ -18,12 +18,12 @@ const client = new Client({
   authStrategy: new LocalAuth(), 
   puppeteer: {
     executablePath: '/usr/bin/chromium-browser',
-    protocolTimeout: 300000, // FIX 1: Gives the browser 5 full minutes to respond before crashing
+    protocolTimeout: 300000, 
     args: [
       '--no-sandbox', 
       '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage', // FIX 2: Prevents Chromium from crashing due to Linux memory limits
-      '--disable-gpu',           // FIX 3: Reduces CPU load by turning off graphics processing
+      '--disable-dev-shm-usage', 
+      '--disable-gpu',           
       '--no-first-run'
     ]
   }
@@ -44,10 +44,30 @@ client.on('ready', () => {
 // 2. THE CORE MESSAGE ROUTER
 // ----------------------------------------------------------------------------
 client.on('message', async message => {
-  if (message.isStatus || message.from.includes('-')) return;
+  // 🛡️ FIX 1: The "Black Hole" Filter (Blocks Groups, Broadcasts, and Channels)
+  if (
+    message.isStatus || 
+    message.from.includes('-') || 
+    message.from.includes('@g.us') || 
+    message.from.includes('@broadcast') || 
+    message.from.includes('newsletter')
+  ) {
+    return; // Silently drop to prevent crash
+  }
+
+  // 🛡️ FIX 2: Strict ID Validation (Stops "Ghost Numbers" from entering the database)
+  if (!/^\d+@c\.us$/.test(message.from)) {
+    console.log(`⚠️ [BLOCKED] Ignored mangled or unsupported ID: ${message.from}`);
+    return;
+  }
   
   const from = message.from; 
-  const text = message.body.trim();
+  
+  // 🛡️ FIX 3: Empty Payload Defense (Prevents crashes if user sends image/audio)
+  const text = message.body ? message.body.trim() : '';
+  if (!text) {
+    return await message.reply('⚠️ Please send a text message. I cannot process images, audio, or stickers right now.');
+  }
   
   console.log(`\n📩 INCOMING [${from.replace('@c.us', '')}]: ${text}`);
   
@@ -236,41 +256,4 @@ client.on('message', async message => {
       await supabase.from('users').update({ status: 'IDLE' }).eq('phone_number', from);
       await message.reply('⚙️ *Request received!* Processing your ticket...\nSearching for available artisans nearby. We will notify you once a match is found.');
       
-      console.log(`🚨 INITIATING BROADCAST FOR JOB #${job.job_id} | Category: ${category}`);
-      
-      const { data: artisans } = await supabase
-        .from('artisans')
-        .select('*')
-        .eq('category', category)
-        .eq('is_available', true)
-        .limit(3);
-      
-      if (!artisans || artisans.length === 0) {
-        await supabase.from('job_tickets').update({ status: 'FAILED_NO_ARTISANS' }).eq('job_id', job.job_id);
-        return await message.reply('⚠️ We are sorry, but there are no available artisans in that category right now. Please try again later.\n\n💬 *For further assistance, chat with Nexa Customer Service: 09045955670*');
-      }
-      
-      const artisanNumbers = artisans.map(a => a.phone_number);
-      
-      await supabase.from('job_tickets').update({
-        status: 'BROADCASTED',
-        notified_artisans: artisanNumbers
-      }).eq('job_id', job.job_id);
-      
-      for (const phone of artisanNumbers) {
-        await client.sendMessage(
-          phone,
-          `🚨 *FAST MATCH ALERT!* 🚨\n\n*Job ID:* #${job.job_id}\n*Category:* ${category}\n*Location:* ${location}\n*Issue:* ${description}\n\n*(First to accept gets the client)*\nReply *ACCEPT ${job.job_id}* to claim this job.`
-        );
-      }
-    
-      return;
-    }
-    
-  } catch (err) {
-    console.error('❌ CRITICAL SYSTEM ERROR:', err);
-    await message.reply('⚠️ The system encountered an error. Please reply "menu" to restart.');
-  }
-});
-
-client.initialize();
+      console.log(`🚨 INITIATING BROADCAST FOR JOB #${job.job_id} | Category
