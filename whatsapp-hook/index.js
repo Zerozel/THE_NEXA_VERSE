@@ -256,4 +256,41 @@ client.on('message', async message => {
       await supabase.from('users').update({ status: 'IDLE' }).eq('phone_number', from);
       await message.reply('⚙️ *Request received!* Processing your ticket...\nSearching for available artisans nearby. We will notify you once a match is found.');
       
-      console.log(`🚨 INITIATING BROADCAST FOR JOB #${job.job_id} | Category
+      console.log(`🚨 INITIATING BROADCAST FOR JOB #${job.job_id} | Category: ${category}`);
+      
+      const { data: artisans } = await supabase
+        .from('artisans')
+        .select('*')
+        .eq('category', category)
+        .eq('is_available', true)
+        .limit(3);
+      
+      if (!artisans || artisans.length === 0) {
+        await supabase.from('job_tickets').update({ status: 'FAILED_NO_ARTISANS' }).eq('job_id', job.job_id);
+        return await message.reply('⚠️ We are sorry, but there are no available artisans in that category right now. Please try again later.\n\n💬 *For further assistance, chat with Nexa Customer Service: 09045955670*');
+      }
+      
+      const artisanNumbers = artisans.map(a => a.phone_number);
+      
+      await supabase.from('job_tickets').update({
+        status: 'BROADCASTED',
+        notified_artisans: artisanNumbers
+      }).eq('job_id', job.job_id);
+      
+      for (const phone of artisanNumbers) {
+        await client.sendMessage(
+          phone,
+          `🚨 *FAST MATCH ALERT!* 🚨\n\n*Job ID:* #${job.job_id}\n*Category:* ${category}\n*Location:* ${location}\n*Issue:* ${description}\n\n*(First to accept gets the client)*\nReply *ACCEPT ${job.job_id}* to claim this job.`
+        );
+      }
+    
+      return;
+    }
+    
+  } catch (err) {
+    console.error('❌ CRITICAL SYSTEM ERROR:', err);
+    await message.reply('⚠️ The system encountered an error. Please reply "menu" to restart.');
+  }
+});
+
+client.initialize();
