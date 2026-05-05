@@ -103,6 +103,18 @@ export default function DashboardPage() {
   }
 
   // ── CRUD ──────────────────────────────────────────────────────────────────
+  
+  function updateModalData(field: string, value: string | number | boolean) {
+    setModal(prev => {
+      if (!prev) return prev;
+      // We use 'as any' here just once to bypass the shape-shifting union issue,
+      // while keeping our actual HTML clean and readable.
+      return {
+        ...prev,
+        data: { ...prev.data, [field]: value }
+      } as any; 
+    });
+  }
   async function saveModal() {
     if (!modal) return;
     const { type, data } = modal;
@@ -306,26 +318,26 @@ export default function DashboardPage() {
             {(modal.type==='service'||modal.type==='item') && (
               <>
                 <Field label="Name">
-                  <input value={(modal.data as {name?:string}).name??''} onChange={e=>setModal(m=>m?({...m,data:{...m.data,name:e.target.value}}):m)} className={inp} />
+                  <input value={(modal.data as {name?:string}).name??''} onChange={e => updateModalData('name', e.target.value)} className={inp} />
                 </Field>
                 <div className="grid grid-cols-2 gap-3">
                   <Field label="Our Price (₦)">
-                    <input type="number" value={(modal.data as {price?:number}).price??''} onChange={e=>setModal(m=>m?({...m,data:{...m.data,price:Number(e.target.value)}}):m)} className={inp} />
+                    <input type="number" value={(modal.data as {price?:number}).price??''} onChange={e => updateModalData('price', Number(e.target.value))} className={inp} />
                   </Field>
                   <Field label="Market Price (₦)">
-                    <input type="number" value={(modal.data as {market_price?:number}).market_price??''} onChange={e=>setModal(m=>m?({...m,data:{...m.data,market_price:Number(e.target.value)}}):m)} className={inp} />
+                    <input type="number" value={(modal.data as {market_price?:number}).market_price??''} onChange={e => updateModalData('market_price', Number(e.target.value))} className={inp} />
                   </Field>
                 </div>
                 {modal.type==='item' && (
                   <Field label="Category">
-                    <input value={(modal.data as {category?:string}).category??''} onChange={e=>setModal(m=>m?({...m,data:{...m.data,category:e.target.value}}):m)} className={inp} />
+                    <input value={(modal.data as {category?:string}).category??''} onChange={e => updateModalData('category', e.target.value)} className={inp} />
                   </Field>
                 )}
                 <Field label="Description">
-                  <textarea value={(modal.data as {description?:string}).description??''} onChange={e=>setModal(m=>m?({...m,data:{...m.data,description:e.target.value}}):m)} rows={3} className={inp+' resize-none'} />
+                  <textarea value={(modal.data as {description?:string}).description??''} onChange={e => updateModalData('description', e.target.value)} rows={3} className={inp+' resize-none'} />
                 </Field>
                 <label className="flex items-center gap-2 mb-4 cursor-pointer">
-                  <input type="checkbox" checked={(modal.data as {highlight?:boolean}).highlight??false} onChange={e=>setModal(m=>m?({...m,data:{...m.data,highlight:e.target.checked}}):m)} className="w-4 h-4 accent-[#D4AF37]" />
+                  <input type="checkbox" checked={(modal.data as {highlight?:boolean}).highlight??false} onChange={e => updateModalData('highlight', e.target.checked)} className="w-4 h-4 accent-[#D4AF37]" />
                   <span className="text-sm text-gray-700">🔥 Set as Featured / Hot Deal</span>
                 </label>
                 <Field label="Images">
@@ -345,10 +357,10 @@ export default function DashboardPage() {
 
             {modal.type==='promo' && (
               <>
-                <Field label="Title"><input value={(modal.data as {title?:string}).title??''} onChange={e=>setModal(m=>m?({...m,data:{...m.data,title:e.target.value}}):m)} className={inp} /></Field>
-                <Field label="Message"><input value={(modal.data as {message?:string}).message??''} onChange={e=>setModal(m=>m?({...m,data:{...m.data,message:e.target.value}}):m)} className={inp} /></Field>
+                <Field label="Title"><input value={(modal.data as {title?:string}).title??''} onChange={e => updateModalData('title', e.target.value)} className={inp} /></Field>
+                <Field label="Message"><input value={(modal.data as {message?:string}).message??''} onChange={e => updateModalData('message', e.target.value)} className={inp} /></Field>
                 <label className="flex items-center gap-2 mb-4 cursor-pointer">
-                  <input type="checkbox" checked={(modal.data as {active?:boolean}).active??false} onChange={e=>setModal(m=>m?({...m,data:{...m.data,active:e.target.checked}}):m)} className="w-4 h-4 accent-[#D4AF37]" />
+                  <input type="checkbox" checked={(modal.data as {active?:boolean}).active??false} onChange={e => updateModalData('active', e.target.checked)} className="w-4 h-4 accent-[#D4AF37]" />
                   <span className="text-sm text-gray-700">Active (show on site)</span>
                 </label>
               </>
