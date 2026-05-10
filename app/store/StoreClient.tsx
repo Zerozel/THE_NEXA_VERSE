@@ -203,7 +203,7 @@ export default function StoreClient({ initialItems, whatsapp }: Props) {
                 const modalImg = src.includes('cloudinary') ? imgSizes.modal(src) : src;
                 return <img key={i} src={modalImg} alt={selected.name} className={!src.includes('cloudinary') ? "opacity-30 object-contain h-32 w-full" : "w-full rounded-xl object-cover"} />
               })}
-            </div>
+            </div> 
             <div className="px-6 pb-8">
               <h2 className="text-xl font-black text-black mt-2 mb-1">{selected.name}</h2>
               {selected.market_price && selected.market_price > selected.price
