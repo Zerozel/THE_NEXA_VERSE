@@ -247,7 +247,7 @@ export default function HomeClient({ hero, titles, whatsapp, initialServices, in
               {modalItem.marketPrice && modalItem.marketPrice > modalItem.price
                 ? <p className="mb-3"><s className="text-gray-400 text-sm mr-2">₦{modalItem.marketPrice.toLocaleString()}</s><span className="text-green-600 font-bold text-lg">₦{modalItem.price.toLocaleString()}</span></p>
                 : <p className="text-[#D4AF37] font-bold text-xl mb-3">₦{modalItem.price.toLocaleString()}</p>}
-              <p className="text-gray-600 text-sm leading-relaxed mb-5">{modalItem.description ?? 'Fresh stock from NEXA.'}</p>
+              <p className="text-gray-600 text-sm leading-relaxed mb-5 whitespace-pre-wrap">{modalItem.description ?? 'Fresh stock from NEXA.'}</p>
               <button onClick={() => orderItem(modalItem)} className="w-full bg-[#D4AF37] text-black font-bold py-4 rounded-xl text-sm">Order on WhatsApp</button>
             </div>
           </>

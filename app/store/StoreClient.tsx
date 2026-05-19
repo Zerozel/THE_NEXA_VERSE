@@ -209,7 +209,7 @@ export default function StoreClient({ initialItems, whatsapp }: Props) {
               {selected.market_price && selected.market_price > selected.price
                 ? <p className="mb-3"><s className="text-gray-400 text-sm mr-2">₦{Number(selected.market_price).toLocaleString()}</s><span className="text-green-600 font-bold text-xl">₦{selected.price.toLocaleString()}</span></p>
                 : <p className="text-red-600 font-bold text-xl mb-3">₦{selected.price.toLocaleString()}</p>}
-              <p className="text-gray-600 text-sm leading-relaxed mb-6">{selected.description ?? 'Fresh stock from NEXA.'}</p>
+              <p className="text-gray-600 text-sm leading-relaxed mb-6 whitespace-pre-wrap">{selected.description ?? 'Fresh stock from NEXA.'}</p>
               <button onClick={handleOrder} className="w-full bg-[#D4AF37] text-black font-bold py-4 rounded-xl text-sm">Order on WhatsApp</button>
             </div>
           </>

@@ -117,7 +117,7 @@ export default function ServicesClient({ initialServices, pageTitle, whatsapp }:
               <p className="text-[#D4AF37] font-bold text-lg mb-3">
                 {selected.price ? `Starts at ₦${Number(selected.price).toLocaleString()}` : 'Price on request'}
               </p>
-              <p className="text-gray-600 text-sm leading-relaxed mb-6">{selected.description ?? 'Professional service by verified experts.'}</p>
+              <p className="text-gray-600 text-sm leading-relaxed mb-6 whitespace-pre-wrap">{selected.description ?? 'Professional service by verified experts.'}</p>
               <button onClick={bookService} className="w-full bg-[#D4AF37] text-black font-bold py-4 rounded-xl text-sm">Book on WhatsApp</button>
             </div>
           </>
