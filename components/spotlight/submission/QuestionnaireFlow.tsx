@@ -3,17 +3,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Master orchestrator — owns all questionnaire state.
 // Phase 3B: integrates draft persistence via useDraft hook.
-//
-// PERSISTENCE BEHAVIOUR:
-//   - On mount: useDraft checks localStorage and restores if found
-//   - On every answer change: triggerSave() is called (debounced 2s)
-//   - On step advance: triggerSave() called immediately (step change matters)
-//   - AutoSaveIndicator shows real-time save status
-//
-// STILL DOES NOT:
-//   - Create submissions (status remains 'draft')
-//   - Save agreements
-//   - Generate tracking tokens
+// Phase 3C: Integrates AgreementScreen and FlowPhase logic.
 // ─────────────────────────────────────────────────────────────────────────────
 import { useState, useCallback, useEffect } from 'react';
 import type {
@@ -30,6 +20,8 @@ import QuestionnaireStep     from './QuestionnaireStep';
 import ReviewStep            from './ReviewStep';
 import AutoSaveIndicator     from './AutoSaveIndicator';
 import SpotlightButton       from '@/components/spotlight/ui/SpotlightButton';
+import AgreementScreen       from './AgreementScreen';
+import type { FlowPhase }    from '@/lib/spotlight/types';
 
 // Question keys used to extract identity fields for the draft record
 const EMAIL_KEY = 'email_address';
@@ -44,6 +36,7 @@ export default function QuestionnaireFlow({ config }: QuestionnaireFlowProps) {
 
   const {
     isRestoring,
+    draftToken,
     saveStatus,
     restoredDraft,
     triggerSave,
@@ -57,6 +50,8 @@ export default function QuestionnaireFlow({ config }: QuestionnaireFlowProps) {
     completedSteps:  new Set(),
     isTransitioning: false,
   });
+  
+  const [phase, setPhase] = useState<FlowPhase>('questionnaire');
 
   // ── RESTORE STATE FROM DRAFT ─────────────────────────────────────────
   useEffect(() => {
@@ -71,6 +66,28 @@ export default function QuestionnaireFlow({ config }: QuestionnaireFlowProps) {
 
   const isReviewStep    = state.currentStep >= total_steps;
   const currentStepData = !isReviewStep ? steps[state.currentStep] : null;
+
+  // ── PHASE SYNC ───────────────────────────────────────────────────────
+  useEffect(() => {
+    if (phase === 'agreement' || phase === 'complete') return;
+    setPhase(isReviewStep ? 'review' : 'questionnaire');
+  }, [isReviewStep, phase]);
+
+  // ── TRANSITION HANDLERS ──────────────────────────────────────────────
+  function handleReviewContinue() {
+    setPhase('agreement');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function handleAgreementBack() {
+    setPhase('review');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function handleAgreementAccepted() {
+    setPhase('complete');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
 
   // ── SCROLL TO TOP ────────────────────────────────────────────────────
   useEffect(() => {
@@ -211,12 +228,30 @@ export default function QuestionnaireFlow({ config }: QuestionnaireFlowProps) {
         className="transition-opacity duration-300"
         style={{ opacity: state.isTransitioning ? 0 : 1 }}
       >
-        {isReviewStep ? (
+        {phase === 'review' ? (
           <ReviewStep
             config={config}
             answers={state.answers}
             onBack={handleBack}
+            onContinue={handleReviewContinue}
           />
+        ) : phase === 'agreement' ? (
+          <AgreementScreen
+            draftToken={draftToken}
+            onBack={handleAgreementBack}
+            onAccepted={handleAgreementAccepted}
+          />
+        ) : phase === 'complete' ? (
+          <div className="text-center py-12">
+            <p className="text-5xl mb-4">✅</p>
+            <h2 className="text-xl font-black text-gray-900 mb-2" style={{ fontFamily: 'var(--font-headline)' }}>
+              You're All Set
+            </h2>
+            <p className="text-gray-500 text-sm leading-relaxed max-w-sm mx-auto">
+              Your application is reviewed and your agreement is recorded.
+              Final submission is the next step — coming in Phase 3D.
+            </p>
+          </div>
         ) : currentStepData ? (
           <>
             <QuestionnaireStep

@@ -2,6 +2,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // All Spotlight TypeScript types.
 // Updated in Phase 3B: added draft persistence types.
+// Updated in Phase 3C: added agreement and flow phase types.
 // ─────────────────────────────────────────────────────────────────────────────
 
 // ── DATABASE-MIRROR TYPES ─────────────────────────────────────────────────
@@ -110,3 +111,37 @@ export type CreateDraftResponse = {
   submission_id: string;
   draft_token: string;
 };
+
+// ── PHASE 3C: AGREEMENT TYPES ────────────────────────────────────────────
+
+/**
+ * Current agreement status for a draft.
+ * Returned by GET /api/spotlight/agreements/[token]
+ */
+export type AgreementStatus = {
+  accepted: boolean;
+  agreement_version: string | null;
+  accepted_at: string | null;
+};
+
+/**
+ * Payload sent to POST /api/spotlight/agreements/[token]
+ */
+export type AcceptAgreementPayload = {
+  agreement_version: string;
+  agreement_text: string; // full snapshot, joined from AGREEMENT_POINTS
+};
+
+/**
+ * Response from POST /api/spotlight/agreements/[token]
+ */
+export type AcceptAgreementResponse = {
+  ok: true;
+  accepted_at: string;
+};
+
+/**
+ * The questionnaire flow now has phases beyond raw step index.
+ * Used by QuestionnaireFlow to decide what to render.
+ */
+export type FlowPhase = 'questionnaire' | 'review' | 'agreement' | 'complete';

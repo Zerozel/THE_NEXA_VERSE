@@ -14,9 +14,10 @@ interface ReviewStepProps {
   config:  QuestionnaireConfig;
   answers: Answers;
   onBack:  () => void;
+  onContinue: () => void;
 }
 
-export default function ReviewStep({ config, answers, onBack }: ReviewStepProps) {
+export default function ReviewStep({ config, answers, onBack, onContinue }: ReviewStepProps) {
   return (
     <div>
       {/* Header */}
@@ -80,17 +81,6 @@ export default function ReviewStep({ config, answers, onBack }: ReviewStepProps)
         ))}
       </div>
 
-      {/* Phase 3B placeholder CTA */}
-      <div className="bg-[#D4AF37]/8 border border-[#D4AF37]/30 rounded-2xl p-5 mb-4 text-center">
-        <p className="text-2xl mb-2">🚀</p>
-        <p className="font-bold text-gray-800 text-sm mb-1">
-          Ready to submit your Spotlight?
-        </p>
-        <p className="text-gray-500 text-xs leading-relaxed">
-          Submission and agreement flow coming in Phase 3B.
-          Your answers have been collected successfully.
-        </p>
-      </div>
 
       <div className="flex gap-3">
         <SpotlightButton variant="ghost" onClick={onBack} fullWidth>
@@ -99,8 +89,7 @@ export default function ReviewStep({ config, answers, onBack }: ReviewStepProps)
         <SpotlightButton
           variant="primary"
           fullWidth
-          disabled
-          title="Available in Phase 3B"
+          onClick={onContinue}
         >
           Continue to Agreement →
         </SpotlightButton>
