@@ -1,23 +1,19 @@
 'use client';
 // components/spotlight/submission/QuestionnaireFlow.tsx
 // ─────────────────────────────────────────────────────────────────────────────
-// THE ORCHESTRATOR — owns all questionnaire state.
+// Master orchestrator — owns all questionnaire state.
+// Phase 3B: integrates draft persistence via useDraft hook.
 //
-// OWNS:
-//   - All user answers (Answers map keyed by question_key)
-//   - Current step index
-//   - Validation errors per question
-//   - Set of completed steps
-//   - Transition animation flag
+// PERSISTENCE BEHAVIOUR:
+//   - On mount: useDraft checks localStorage and restores if found
+//   - On every answer change: triggerSave() is called (debounced 2s)
+//   - On step advance: triggerSave() called immediately (step change matters)
+//   - AutoSaveIndicator shows real-time save status
 //
-// DOES NOT:
-//   - Write to the database
-//   - Create submissions
-//   - Persist anything
-//   - Know about agreements or tracking tokens
-//
-// All logic (validation, progress) is delegated to lib/spotlight/questionnaire.ts.
-// All rendering is delegated to QuestionnaireStep / ReviewStep / ProgressBar.
+// STILL DOES NOT:
+//   - Create submissions (status remains 'draft')
+//   - Save agreements
+//   - Generate tracking tokens
 // ─────────────────────────────────────────────────────────────────────────────
 import { useState, useCallback, useEffect } from 'react';
 import type {
@@ -27,14 +23,17 @@ import type {
   ValidationErrors,
   QuestionnaireState,
 } from '@/lib/spotlight/types';
-import {
-  validateStep,
-  getProgress,
-} from '@/lib/spotlight/questionnaire';
-import ProgressBar      from './ProgressBar';
-import QuestionnaireStep from './QuestionnaireStep';
-import ReviewStep        from './ReviewStep';
-import SpotlightButton   from '@/components/spotlight/ui/SpotlightButton';
+import { validateStep, getProgress } from '@/lib/spotlight/questionnaire';
+import { useDraft }          from '@/lib/spotlight/useDraft';
+import ProgressBar           from './ProgressBar';
+import QuestionnaireStep     from './QuestionnaireStep';
+import ReviewStep            from './ReviewStep';
+import AutoSaveIndicator     from './AutoSaveIndicator';
+import SpotlightButton       from '@/components/spotlight/ui/SpotlightButton';
+
+// Question keys used to extract identity fields for the draft record
+const EMAIL_KEY = 'email_address';
+const NAME_KEY  = 'full_name';
 
 interface QuestionnaireFlowProps {
   config: QuestionnaireConfig;
@@ -43,111 +42,182 @@ interface QuestionnaireFlowProps {
 export default function QuestionnaireFlow({ config }: QuestionnaireFlowProps) {
   const { steps, total_steps } = config;
 
-  // ── STATE ───────────────────────────────────────────────────────────────
+  const {
+    isRestoring,
+    saveStatus,
+    restoredDraft,
+    triggerSave,
+    clearDraft,
+  } = useDraft();
+
   const [state, setState] = useState<QuestionnaireState>({
-    answers:        {},
-    currentStep:    0,
-    errors:         {},
-    completedSteps: new Set(),
+    answers:         {},
+    currentStep:     0,
+    errors:          {},
+    completedSteps:  new Set(),
     isTransitioning: false,
   });
 
-  const isReviewStep = state.currentStep >= total_steps;
+  // ── RESTORE STATE FROM DRAFT ─────────────────────────────────────────
+  useEffect(() => {
+    if (!restoredDraft) return;
+    setState(prev => ({
+      ...prev,
+      answers:        restoredDraft.answers,
+      currentStep:    restoredDraft.current_step,
+      completedSteps: new Set(restoredDraft.completed_steps),
+    }));
+  }, [restoredDraft]);
+
+  const isReviewStep    = state.currentStep >= total_steps;
   const currentStepData = !isReviewStep ? steps[state.currentStep] : null;
 
-  // ── SCROLL TO TOP on step change ────────────────────────────────────────
+  // ── SCROLL TO TOP ────────────────────────────────────────────────────
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, [state.currentStep]);
 
-  // ── ANSWER HANDLER ──────────────────────────────────────────────────────
+  // ── ANSWER HANDLER ───────────────────────────────────────────────────
   const handleChange = useCallback((key: string, value: AnswerValue) => {
-    setState(prev => ({
-      ...prev,
-      answers: { ...prev.answers, [key]: value },
-      // Clear error for this field as user edits
-      errors:  { ...prev.errors, [key]: '' },
-    }));
-  }, []);
+    setState(prev => {
+      const newAnswers = { ...prev.answers, [key]: value };
+      const newErrors  = { ...prev.errors, [key]: '' };
+      const newState   = { ...prev, answers: newAnswers, errors: newErrors };
 
-  // ── NEXT ────────────────────────────────────────────────────────────────
+      // Trigger auto-save with updated answers
+      // Extract identity fields for the draft record
+      triggerSave({
+        answers:         newAnswers,
+        current_step:    prev.currentStep,
+        completed_steps: [...prev.completedSteps],
+        email:           key === EMAIL_KEY
+                           ? (value as string)
+                           : (newAnswers[EMAIL_KEY] as string | undefined),
+        participant_name: key === NAME_KEY
+                           ? (value as string)
+                           : (newAnswers[NAME_KEY] as string | undefined),
+      });
+
+      return newState;
+    });
+  }, [triggerSave]);
+
+  // ── NEXT ─────────────────────────────────────────────────────────────
   function handleNext() {
     if (!currentStepData) return;
 
-    // Validate current step
     const errors: ValidationErrors = validateStep(
       currentStepData.questions,
       state.answers,
     );
 
     if (Object.values(errors).some(e => e !== '')) {
-      // Scroll to first error
-      const firstErrKey = Object.keys(errors).find(k => errors[k]);
-      if (firstErrKey) {
-        const el = document.querySelector(`[data-question-key="${firstErrKey}"]`);
-        el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      const firstKey = Object.keys(errors).find(k => errors[k]);
+      if (firstKey) {
+        document.querySelector(`[data-question-key="${firstKey}"]`)
+          ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }
       setState(prev => ({ ...prev, errors }));
       return;
     }
 
-    // Mark step as complete and advance
+    const newCompleted = new Set([...state.completedSteps, state.currentStep]);
+    const newStep      = state.currentStep + 1;
+
     setState(prev => ({
       ...prev,
       errors:          {},
-      completedSteps:  new Set([...prev.completedSteps, prev.currentStep]),
-      currentStep:     prev.currentStep + 1,
+      completedSteps:  newCompleted,
+      currentStep:     newStep,
       isTransitioning: true,
     }));
 
-    // End transition after animation
+    // Save immediately on step advance (don't debounce step changes)
+    triggerSave({
+      answers:         state.answers,
+      current_step:    newStep,
+      completed_steps: [...newCompleted],
+    });
+
     setTimeout(() => setState(prev => ({ ...prev, isTransitioning: false })), 350);
   }
 
-  // ── PREVIOUS ────────────────────────────────────────────────────────────
+  // ── PREVIOUS ─────────────────────────────────────────────────────────
   function handleBack() {
     if (state.currentStep === 0) return;
+    const newStep = state.currentStep - 1;
     setState(prev => ({
       ...prev,
       errors:          {},
-      currentStep:     prev.currentStep - 1,
+      currentStep:     newStep,
       isTransitioning: true,
     }));
+
+    triggerSave({
+      answers:         state.answers,
+      current_step:    newStep,
+      completed_steps: [...state.completedSteps],
+    });
+
     setTimeout(() => setState(prev => ({ ...prev, isTransitioning: false })), 350);
   }
 
-  // ── PROGRESS ────────────────────────────────────────────────────────────
-  const progress = getProgress(
-    state.currentStep,
-    total_steps,
-    state.completedSteps,
-  );
+  // ── PROGRESS ─────────────────────────────────────────────────────────
+  const progress = getProgress(state.currentStep, total_steps, state.completedSteps);
+  const stepTitles = [...steps.map(s => s.group.title), 'Review'];
 
-  const stepTitles = [
-    ...steps.map(s => s.group.title),
-    'Review',
-  ];
+  // ── RESTORE LOADING STATE ─────────────────────────────────────────────
+  if (isRestoring) {
+    return (
+      <div className="py-20 flex flex-col items-center gap-4">
+        <div className="w-6 h-6 border-2 border-[#D4AF37] border-t-transparent rounded-full animate-spin" />
+        <p className="text-gray-400 text-sm">Restoring your progress…</p>
+      </div>
+    );
+  }
 
-  // ── RENDER ──────────────────────────────────────────────────────────────
+  // ── RENDER ────────────────────────────────────────────────────────────
   return (
     <div className="pb-10">
-      {/* Progress bar — always visible */}
-      <ProgressBar progress={progress} stepTitles={stepTitles} />
+      {/* Progress + auto-save row */}
+      <div className="flex items-start justify-between gap-3 mb-1">
+        <div className="flex-1">
+          <ProgressBar progress={progress} stepTitles={stepTitles} />
+        </div>
+      </div>
 
-      {/* Step content — animated */}
+      {/* Auto-save indicator */}
+      <div className="flex justify-end mb-4 min-h-[20px]">
+        <AutoSaveIndicator status={saveStatus} />
+      </div>
+
+      {/* Restored draft notice */}
+      {restoredDraft && state.currentStep === restoredDraft.current_step && (
+        <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3 mb-5 flex items-center justify-between">
+          <p className="text-green-700 text-sm">
+            ✓ Progress restored — continuing from where you left off.
+          </p>
+          <button
+            onClick={clearDraft}
+            className="text-green-600 text-xs font-semibold hover:text-green-800 ml-3 shrink-0"
+          >
+            Start fresh
+          </button>
+        </div>
+      )}
+
+      {/* Step content */}
       <div
         className="transition-opacity duration-300"
         style={{ opacity: state.isTransitioning ? 0 : 1 }}
       >
         {isReviewStep ? (
-          // ── REVIEW STEP ─────────────────────────────────────────────────
           <ReviewStep
             config={config}
             answers={state.answers}
             onBack={handleBack}
           />
         ) : currentStepData ? (
-          // ── CONTENT STEPS ────────────────────────────────────────────────
           <>
             <QuestionnaireStep
               step={currentStepData}
@@ -156,18 +226,12 @@ export default function QuestionnaireFlow({ config }: QuestionnaireFlowProps) {
               onChange={handleChange}
             />
 
-            {/* ── NAVIGATION ─────────────────────────────────────────────── */}
             <div className="flex gap-3 mt-8 pt-6 border-t border-gray-100">
               {state.currentStep > 0 && (
-                <SpotlightButton
-                  variant="ghost"
-                  onClick={handleBack}
-                  className="flex-shrink-0"
-                >
+                <SpotlightButton variant="ghost" onClick={handleBack}>
                   ← Back
                 </SpotlightButton>
               )}
-
               <SpotlightButton
                 variant="primary"
                 onClick={handleNext}
@@ -180,9 +244,9 @@ export default function QuestionnaireFlow({ config }: QuestionnaireFlowProps) {
               </SpotlightButton>
             </div>
 
-            {/* Required field note */}
             <p className="text-center text-gray-400 text-xs mt-3">
-              Fields marked <span className="text-[#D4AF37] font-bold">*</span> are required.
+              Fields marked <span className="text-[#D4AF37] font-bold">*</span> are required
+              · Your progress is saved automatically.
             </p>
           </>
         ) : null}

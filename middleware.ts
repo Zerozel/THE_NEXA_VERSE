@@ -37,6 +37,14 @@ export async function middleware(request: NextRequest) {
     return supabaseResponse;
   }
 
+  // ── RATE LIMIT: draft creation endpoint ──────────────────────────────
+  if (pathname.startsWith('/api/spotlight/drafts') && request.method === 'POST') {
+    const ip = request.headers.get('x-forwarded-for')?.split(',')[0] ?? 'unknown';
+    if (isRateLimited(ip, 10, 60_000)) {  // 10 draft creations per minute per IP
+      return new NextResponse('Too Many Requests', { status: 429 });
+    }
+  }
+
   // ── SUPABASE INITIALIZATION ──────────────────────────────────────────────
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -118,5 +126,6 @@ export const config = {
     '/admin/:path*',
     '/spotlight/admin/:path*',
     '/api/track/:path*',
+    '/api/spotlight/drafts/:path*',   
   ],
 };

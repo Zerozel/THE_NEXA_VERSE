@@ -24,6 +24,8 @@ import type {
   ValidationErrors,
   ProgressSnapshot,
 } from './types';
+import { unstable_cache } from 'next/cache';
+import { createClient } from '@supabase/supabase-js';
 
 // ── FETCH ──────────────────────────────────────────────────────────────────
 
@@ -34,13 +36,31 @@ import type {
  */
 export async function fetchQuestionnaire(): Promise<QuestionnaireConfig | null> {
   try {
-    const base = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000';
-    const res  = await fetch(`${base}/api/spotlight/questionnaire`, {
+    // Dynamically resolve the absolute URL based on the environment
+    let base = 'http://localhost:3000';
+    
+    if (process.env.NEXT_PUBLIC_APP_URL) {
+      base = process.env.NEXT_PUBLIC_APP_URL;
+    } else if (process.env.VERCEL_URL) {
+      // Vercel populates this automatically, but without the protocol
+      base = `https://${process.env.VERCEL_URL}`;
+    }
+
+    // Strip any accidental trailing slashes from environment variables
+    base = base.replace(/\/$/, '');
+
+    const res = await fetch(`${base}/api/spotlight/questionnaire`, {
       next: { tags: ['spotlight-questionnaire'], revalidate: 600 },
     });
-    if (!res.ok) return null;
+
+    if (!res.ok) {
+      console.error(`[fetchQuestionnaire] API responded with status: ${res.status}`);
+      return null;
+    }
+    
     return res.json() as Promise<QuestionnaireConfig>;
-  } catch {
+  } catch (err) {
+    console.error('[fetchQuestionnaire] Network or parsing error:', err);
     return null;
   }
 }
