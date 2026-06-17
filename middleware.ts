@@ -1,28 +1,19 @@
-// middleware.ts (runs at the EDGE — before any page renders)
-// ─────────────────────────────────────────────────────────────────────────────
-// WHAT THIS DOES:
-//   1. Protects all /admin/* routes — unauthenticated users never receive
-//      admin HTML. The check happens at the network edge, not in the browser.
-//   2. Rate-limits the /api/track endpoint to prevent analytics spam.
-//   3. Injects request timing for performance monitoring.
-//
-// WHY THIS MATTERS:
-//   Client-side auth checks (like we had in v2) can be bypassed by disabling
-//   JavaScript. This middleware runs BEFORE Next.js even renders the page,
-//   making it truly server-enforced.
-// ─────────────────────────────────────────────────────────────────────────────
+// middleware.ts
 import { NextResponse, type NextRequest } from 'next/server';
-import { createServerClient } from '@supabase/ssr';
+import { createServerClient }             from '@supabase/ssr';
 
-// ── RATE LIMITING (in-memory, Edge-compatible) ────────────────────────────
-// Simple token bucket: each IP gets 30 requests per minute to /api/track.
-// For production at scale, replace with Upstash Redis.
+// ── RATE LIMITING ─────────────────────────────────────────────────────────
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
 
 function isRateLimited(ip: string, limit = 30, windowMs = 60_000): boolean {
   const now = Date.now();
-  const entry = rateLimitMap.get(ip);
+  
+  // Prevent memory leak by periodically cleaning up expired IPs
+  for (const [key, value] of rateLimitMap.entries()) {
+    if (now > value.resetAt) rateLimitMap.delete(key);
+  }
 
+  const entry = rateLimitMap.get(ip);
   if (!entry || now > entry.resetAt) {
     rateLimitMap.set(ip, { count: 1, resetAt: now + windowMs });
     return false;
@@ -34,75 +25,98 @@ function isRateLimited(ip: string, limit = 30, windowMs = 60_000): boolean {
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  const response = NextResponse.next();
+  let supabaseResponse = NextResponse.next({ request });
 
-  // ── PERFORMANCE TIMING ─────────────────────────────────────────────────
-  response.headers.set('x-request-start', Date.now().toString());
-
-  // ── RATE LIMIT: analytics tracking endpoint ────────────────────────────
+  // ── RATE LIMIT: analytics endpoint ───────────────────────────────────
   if (pathname.startsWith('/api/track')) {
     const ip = request.headers.get('x-forwarded-for')?.split(',')[0] ?? 'unknown';
     if (isRateLimited(ip)) {
       return new NextResponse('Too Many Requests', { status: 429 });
     }
+    // If it's just the tracking API, we don't need to invoke Supabase auth
+    return supabaseResponse;
   }
 
-  // ── ADMIN ROUTE PROTECTION ─────────────────────────────────────────────
-  // Allow the login page itself to load (obviously)
-  if (pathname.startsWith('/admin') && pathname !== '/admin/login') {
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          get: (name) => request.cookies.get(name)?.value,
-          // Middleware can't set cookies directly — pass through
-          set: (name, value, options) => {
-            response.cookies.set({ name, value, ...options });
-          },
-          remove: (name, options) => {
-            response.cookies.set({ name, value: '', ...options });
-          },
+  // ── SUPABASE INITIALIZATION ──────────────────────────────────────────────
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        get(name: string) {
+          return request.cookies.get(name)?.value;
         },
+        set(name: string, value: string, options: any) {
+          // Update the request object so subsequent checks have the new cookie
+          request.cookies.set({ name, value, ...options });
+          // Update the response object so the browser gets the new cookie
+          supabaseResponse = NextResponse.next({
+            request: { headers: request.headers },
+          });
+          supabaseResponse.cookies.set({ name, value, ...options });
+        },
+        remove(name: string, options: any) {
+          request.cookies.set({ name, value: '', ...options });
+          supabaseResponse = NextResponse.next({
+            request: { headers: request.headers },
+          });
+          supabaseResponse.cookies.set({ name, value: '', ...options });
+        },
+      },
+    }
+  );
+
+  // Use getUser() instead of getSession() for secure server-side validation
+  const { data: { user } } = await supabase.auth.getUser();
+
+  // Helper function to persist refreshed auth cookies during redirects
+  const redirectWithCookies = (url: URL) => {
+    const redirectResponse = NextResponse.redirect(url);
+    supabaseResponse.cookies.getAll().forEach((cookie) => {
+      redirectResponse.cookies.set(cookie.name, cookie.value, cookie);
+    });
+    return redirectResponse;
+  };
+
+  // ── NEXA ADMIN PROTECTION (/admin/*) ─────────────────────────────────
+  if (pathname.startsWith('/admin')) {
+    if (pathname === '/admin/login') {
+      if (user) return redirectWithCookies(new URL('/admin/dashboard', request.url));
+    } else {
+      if (!user) {
+        const url = new URL('/admin/login', request.url);
+        url.searchParams.set('redirect', pathname);
+        return redirectWithCookies(url);
       }
-    );
-
-    const { data: { session } } = await supabase.auth.getSession();
-
-    if (!session) {
-      // Not authenticated — redirect to login, preserve intended destination
-      const loginUrl = new URL('/admin/login', request.url);
-      loginUrl.searchParams.set('redirect', pathname);
-      return NextResponse.redirect(loginUrl);
     }
   }
 
-  // ── REDIRECT: logged-in users away from login page ────────────────────
-  if (pathname === '/admin/login') {
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          get: (name) => request.cookies.get(name)?.value,
-          set: (name, value, options) => { response.cookies.set({ name, value, ...options }); },
-          remove: (name, options) => { response.cookies.set({ name, value: '', ...options }); },
-        },
+  // ── SPOTLIGHT ADMIN PROTECTION (/spotlight/admin/*) ───────────────────
+  if (pathname.startsWith('/spotlight/admin')) {
+    const isSpotlightAdmin = user?.app_metadata?.spotlight_admin === true;
+
+    if (pathname === '/spotlight/admin/login') {
+      if (isSpotlightAdmin) return redirectWithCookies(new URL('/spotlight/admin', request.url));
+    } else {
+      if (!user) {
+        const url = new URL('/spotlight/admin/login', request.url);
+        url.searchParams.set('redirect', pathname);
+        return redirectWithCookies(url);
       }
-    );
-    const { data: { session } } = await supabase.auth.getSession();
-    if (session) {
-      return NextResponse.redirect(new URL('/admin/dashboard', request.url));
+      
+      if (!isSpotlightAdmin) {
+        return redirectWithCookies(new URL('/spotlight', request.url));
+      }
     }
   }
 
-  return response;
+  return supabaseResponse;
 }
 
-// Tell Next.js which paths this middleware should run on
 export const config = {
   matcher: [
-    '/admin/:path*',   // All admin pages
-    '/api/track/:path*', // Tracking API
+    '/admin/:path*',
+    '/spotlight/admin/:path*',
+    '/api/track/:path*',
   ],
 };
