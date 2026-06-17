@@ -1,24 +1,12 @@
 // lib/spotlight/questionnaire.ts
 // ─────────────────────────────────────────────────────────────────────────────
 // Questionnaire service — the single source of truth for questionnaire logic.
-//
-// RESPONSIBILITIES:
-//   - Fetch questionnaire config from the API
-//   - Transform DB rows into UI-friendly structure
-//   - Validate a step's answers against DB-defined rules
-//   - Calculate progress
-//
-// UI COMPONENTS MUST NOT:
-//   - Transform DB data themselves
-//   - Contain validation rules
-//   - Know about question ordering logic
-//
-// All of that lives here.
 // ─────────────────────────────────────────────────────────────────────────────
 import type {
   QuestionnaireConfig,
   QuestionnaireStep,
   SpotlightQuestion,
+  SpotlightQuestionGroup,
   Answers,
   AnswerValue,
   ValidationErrors,
@@ -30,37 +18,54 @@ import { createClient } from '@supabase/supabase-js';
 // ── FETCH ──────────────────────────────────────────────────────────────────
 
 /**
- * Fetches the questionnaire config from the API.
- * Used by Server Components (page.tsx) to pre-load config server-side.
- * Responses are cached at the API layer for 10 minutes.
+ * The actual data-fetching logic. Cached for 10 minutes. Single source
+ * of truth — called by the API route (for browser/client consumers) AND
+ * directly by Server Components (no HTTP, no NEXT_PUBLIC_APP_URL needed).
  */
+export const getQuestionnaireData = unstable_cache(
+  async (): Promise<QuestionnaireConfig> => {
+    const db = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    );
+
+    const [groupsRes, questionsRes] = await Promise.all([
+      db.from('spotlight_question_groups')
+        .select('id, group_key, title, description, sort_order')
+        .eq('is_active', true)
+        .order('sort_order', { ascending: true }),
+      db.from('spotlight_questions')
+        .select('id, group_id, question_key, question_text, help_text, placeholder, input_type, options, is_required, max_length, sort_order')
+        .eq('is_active', true)
+        .order('sort_order', { ascending: true }),
+    ]);
+
+    if (groupsRes.error)    throw new Error(groupsRes.error.message);
+    if (questionsRes.error) throw new Error(questionsRes.error.message);
+
+    const groups:    SpotlightQuestionGroup[] = groupsRes.data    ?? [];
+    const questions: SpotlightQuestion[]      = questionsRes.data ?? [];
+
+    const steps: QuestionnaireStep[] = groups.map((group, idx) => ({
+      step_number: idx + 1,
+      group,
+      questions: questions
+        .filter(q => q.group_id === group.id)
+        .sort((a, b) => a.sort_order - b.sort_order),
+    }));
+
+    return { steps, total_steps: steps.length, total_questions: questions.length };
+  },
+  ['spotlight-questionnaire'],
+  { tags: ['spotlight-questionnaire'], revalidate: 600 },
+);
+
+/** Used by Server Components — direct call, no self-fetch. */
 export async function fetchQuestionnaire(): Promise<QuestionnaireConfig | null> {
   try {
-    // Dynamically resolve the absolute URL based on the environment
-    let base = 'http://localhost:3000';
-    
-    if (process.env.NEXT_PUBLIC_APP_URL) {
-      base = process.env.NEXT_PUBLIC_APP_URL;
-    } else if (process.env.VERCEL_URL) {
-      // Vercel populates this automatically, but without the protocol
-      base = `https://${process.env.VERCEL_URL}`;
-    }
-
-    // Strip any accidental trailing slashes from environment variables
-    base = base.replace(/\/$/, '');
-
-    const res = await fetch(`${base}/api/spotlight/questionnaire`, {
-      next: { tags: ['spotlight-questionnaire'], revalidate: 600 },
-    });
-
-    if (!res.ok) {
-      console.error(`[fetchQuestionnaire] API responded with status: ${res.status}`);
-      return null;
-    }
-    
-    return res.json() as Promise<QuestionnaireConfig>;
+    return await getQuestionnaireData();
   } catch (err) {
-    console.error('[fetchQuestionnaire] Network or parsing error:', err);
+    console.error('[fetchQuestionnaire]', err);
     return null;
   }
 }
@@ -71,9 +76,6 @@ export async function fetchQuestionnaire(): Promise<QuestionnaireConfig | null> 
  * Validates all answers for a given step against the DB-defined rules.
  * Returns a map of question_key → error message.
  * An empty map means the step is valid.
- *
- * Validation rules come from the question definition (is_required, max_length).
- * No rules are hardcoded here.
  */
 export function validateStep(
   questions: SpotlightQuestion[],
