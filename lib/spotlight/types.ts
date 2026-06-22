@@ -189,6 +189,69 @@ export type SubmitErrorResponse = {
  */
 /**
  * The questionnaire flow now has phases beyond raw step index.
- * Used by QuestionnaireFlow to decide what to render.
+ * Used by QuestionnaireFlow to decide what to render. 
  */
+ 
+// ── PHASE 3E: TRACKING TYPES ──────────────────────────────────────────────
+
+/**
+ * The full set of statuses a submission can hold, per the Phase 2
+ * CHECK constraint on spotlight_submissions.status.
+ */
+export type SpotlightSubmissionStatus =
+  | 'draft'
+  | 'submitted'
+  | 'under_review'
+  | 'approved'
+  | 'rejected'
+  | 'flagged'
+  | 'queued'
+  | 'published';
+
+export type TimelineEventState = 'completed' | 'current' | 'upcoming';
+
+/**
+ * One row in the participant-facing timeline.
+ * 'completed' and 'current' steps come from real spotlight_tracking_events
+ * rows. 'upcoming' steps are computed from the known happy-path order and
+ * carry no timestamp (the event hasn't happened yet).
+ */
+export type TrackingTimelineEvent = {
+  status: SpotlightSubmissionStatus;
+  label: string;
+  description: string | null;
+  timestamp: string | null;
+  state: TimelineEventState;
+};
+
+export type StatusTone = 'info' | 'success' | 'warning' | 'muted';
+
+/**
+ * Forward-looking status explanation — distinct from the frozen
+ * event_label/event_description stored per-event. See architecture notes.
+ */
+export type StatusMessageConfig = {
+  status: SpotlightSubmissionStatus;
+  label: string;
+  message: string;
+  icon: string;
+  tone: StatusTone;
+};
+
+/** Full payload returned by GET /api/spotlight/track/[trackingToken] */
+export type TrackingInfo = {
+  current_status: SpotlightSubmissionStatus;
+  submitted_at: string | null;
+  timeline_events: TrackingTimelineEvent[];
+  current_stage: StatusMessageConfig;
+  next_stage: StatusMessageConfig | null;
+};
+
+export type TrackingErrorCode = 'invalid_token' | 'not_found' | 'server_error';
+
+export type TrackingErrorResponse = {
+  error: string;
+  code: TrackingErrorCode;
+};
+ 
 export type FlowPhase = 'questionnaire' | 'review' | 'agreement' | 'submitting';
