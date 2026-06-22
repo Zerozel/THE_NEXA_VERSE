@@ -140,8 +140,55 @@ export type AcceptAgreementResponse = {
   accepted_at: string;
 };
 
+
+
+// ── PHASE 3D: SUBMISSION TYPES ───────────────────────────────────────────
+
+/**
+ * Result of the readiness check performed before submission.
+ * missing[] contains human-readable descriptions of what's incomplete —
+ * shown directly to the participant if submission is blocked.
+ */
+export type ReadinessCheck = {
+  ready: boolean;
+  missing: string[];
+};
+
+/** Payload sent to POST /api/spotlight/submissions/submit */
+export type SubmitDraftPayload = {
+  draft_token: string;
+};
+
+/** Successful submission response */
+export type SubmitDraftResponse = {
+  submission_id: string;
+  tracking_token: string;
+  status: 'submitted';
+};
+
+/** Error codes returned by the submit endpoint */
+export type SubmitErrorCode =
+  | 'invalid_token'
+  | 'draft_not_found'
+  | 'already_submitted'
+  | 'not_ready'
+  | 'submission_failed';
+
+/** Error response shape from the submit endpoint */
+export type SubmitErrorResponse = {
+  error: string;
+  code: SubmitErrorCode;
+  missing?: string[];        // present when code = 'not_ready'
+  tracking_token?: string;   // present when code = 'already_submitted'
+};
+
+/**
+ * FlowPhase extended for Phase 3D.
+ * 'complete' from Phase 3C is replaced by 'submitting' (transient) —
+ * success now redirects to /spotlight/success rather than rendering inline.
+ */
 /**
  * The questionnaire flow now has phases beyond raw step index.
  * Used by QuestionnaireFlow to decide what to render.
  */
-export type FlowPhase = 'questionnaire' | 'review' | 'agreement' | 'complete';
+export type FlowPhase = 'questionnaire' | 'review' | 'agreement' | 'submitting';

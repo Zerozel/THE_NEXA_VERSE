@@ -4,24 +4,27 @@
 // Master orchestrator — owns all questionnaire state.
 // Phase 3B: integrates draft persistence via useDraft hook.
 // Phase 3C: Integrates AgreementScreen and FlowPhase logic.
+// Phase 3D: Integrates final submission logic and routing.
 // ─────────────────────────────────────────────────────────────────────────────
 import { useState, useCallback, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import type {
   QuestionnaireConfig,
   Answers,
   AnswerValue,
   ValidationErrors,
   QuestionnaireState,
+  FlowPhase,
 } from '@/lib/spotlight/types';
 import { validateStep, getProgress } from '@/lib/spotlight/questionnaire';
 import { useDraft }          from '@/lib/spotlight/useDraft';
+import { submitDraft, SubmissionError } from '@/lib/spotlight/submission';
 import ProgressBar           from './ProgressBar';
 import QuestionnaireStep     from './QuestionnaireStep';
 import ReviewStep            from './ReviewStep';
 import AutoSaveIndicator     from './AutoSaveIndicator';
 import SpotlightButton       from '@/components/spotlight/ui/SpotlightButton';
 import AgreementScreen       from './AgreementScreen';
-import type { FlowPhase }    from '@/lib/spotlight/types';
 
 // Question keys used to extract identity fields for the draft record
 const EMAIL_KEY = 'email_address';
@@ -32,6 +35,8 @@ interface QuestionnaireFlowProps {
 }
 
 export default function QuestionnaireFlow({ config }: QuestionnaireFlowProps) {
+  const router = useRouter();
+
   const { steps, total_steps } = config;
 
   const {
@@ -51,7 +56,10 @@ export default function QuestionnaireFlow({ config }: QuestionnaireFlowProps) {
     isTransitioning: false,
   });
   
-  const [phase, setPhase] = useState<FlowPhase>('questionnaire');
+  // Appended 'submitting' to support the transition phase
+  const [phase, setPhase] = useState<FlowPhase | 'submitting'>('questionnaire');
+  const [submitError, setSubmitError] = useState<string>('');
+  const [submitMissing, setSubmitMissing] = useState<string[]>([]);
 
   // ── RESTORE STATE FROM DRAFT ─────────────────────────────────────────
   useEffect(() => {
@@ -69,7 +77,7 @@ export default function QuestionnaireFlow({ config }: QuestionnaireFlowProps) {
 
   // ── PHASE SYNC ───────────────────────────────────────────────────────
   useEffect(() => {
-    if (phase === 'agreement' || phase === 'complete') return;
+    if (phase === 'agreement' || phase === 'submitting') return;
     setPhase(isReviewStep ? 'review' : 'questionnaire');
   }, [isReviewStep, phase]);
 
@@ -84,9 +92,52 @@ export default function QuestionnaireFlow({ config }: QuestionnaireFlowProps) {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
-  function handleAgreementAccepted() {
-    setPhase('complete');
+  // Phase 3D Submission logic
+  async function handleAgreementAccepted() {
+    setSubmitError('');
+    setSubmitMissing([]);
+    setPhase('submitting');
     window.scrollTo({ top: 0, behavior: 'smooth' });
+
+    if (!draftToken) {
+      setSubmitError('We could not find your draft. Please refresh the page and try again.');
+      setPhase('agreement');
+      return;
+    }
+
+    try {
+      const result = await submitDraft(draftToken);
+
+      // Submission complete — the draft token is no longer useful.
+      // The tracking token (carried in the URL) is the new identifier.
+      clearDraft();
+
+      router.push(`/spotlight/success?token=${result.tracking_token}`);
+    } catch (err) {
+      if (err instanceof SubmissionError) {
+        // Already submitted (e.g. double-click) — treat as success
+        if (err.code === 'already_submitted' && err.tracking_token) {
+          clearDraft();
+          router.push(`/spotlight/success?token=${err.tracking_token}`);
+          return;
+        }
+
+        // Missing required fields/agreement — send participant back to fix it
+        if (err.code === 'not_ready') {
+          setSubmitMissing(err.missing ?? []);
+          setSubmitError('Your application is almost ready — a few things need attention:');
+          setPhase('agreement');
+          return;
+        }
+
+        setSubmitError(err.message);
+        setPhase('agreement');
+        return;
+      }
+
+      setSubmitError('Something went wrong. Please try again.');
+      setPhase('agreement');
+    }
   }
 
   // ── SCROLL TO TOP ────────────────────────────────────────────────────
@@ -236,21 +287,27 @@ export default function QuestionnaireFlow({ config }: QuestionnaireFlowProps) {
             onContinue={handleReviewContinue}
           />
         ) : phase === 'agreement' ? (
-          <AgreementScreen
-            draftToken={draftToken}
-            onBack={handleAgreementBack}
-            onAccepted={handleAgreementAccepted}
-          />
-        ) : phase === 'complete' ? (
-          <div className="text-center py-12">
-            <p className="text-5xl mb-4">✅</p>
-            <h2 className="text-xl font-black text-gray-900 mb-2" style={{ fontFamily: 'var(--font-headline)' }}>
-              You're All Set
-            </h2>
-            <p className="text-gray-500 text-sm leading-relaxed max-w-sm mx-auto">
-              Your application is reviewed and your agreement is recorded.
-              Final submission is the next step — coming in Phase 3D.
-            </p>
+          <>
+            {submitError && (
+              <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 mb-5">
+                <p className="text-red-700 text-sm font-medium mb-1">{submitError}</p>
+                {submitMissing.length > 0 && (
+                  <ul className="list-disc list-inside text-red-600 text-xs space-y-0.5 mt-1">
+                    {submitMissing.map((m, i) => <li key={i}>{m}</li>)}
+                  </ul>
+                )}
+              </div>
+            )}
+            <AgreementScreen
+              draftToken={draftToken}
+              onBack={handleAgreementBack}
+              onAccepted={handleAgreementAccepted}
+            />
+          </>
+        ) : phase === 'submitting' ? (
+          <div className="text-center py-16">
+            <div className="w-8 h-8 border-2 border-[#D4AF37] border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+            <p className="text-gray-500 text-sm">Submitting your Spotlight application…</p>
           </div>
         ) : currentStepData ? (
           <>
