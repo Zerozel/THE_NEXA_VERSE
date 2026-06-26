@@ -67,7 +67,7 @@ export async function POST(req: NextRequest) {
   const { data: submission, error: findError } = await db
     .from('spotlight_submissions')
     .select('id, status, tracking_token, metadata')
-    .eq("metadata->>'draft_token'", draft_token)
+    .eq("metadata->>draft_token", draft_token)
     .maybeSingle();
 
   if (findError || !submission) {
