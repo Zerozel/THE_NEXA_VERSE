@@ -32,7 +32,7 @@ async function findDraftByToken(token: string) {
     .from('spotlight_submissions')
     .select('id, status')
     .eq('status', 'draft')
-    .eq("metadata->>'draft_token'", token)
+    .eq("metadata->>draft_token", token)
     .single();
 
   if (error || !data) return null;

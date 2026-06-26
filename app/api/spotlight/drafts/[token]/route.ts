@@ -26,7 +26,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
     .from('spotlight_submissions')
     .select('id, email, participant_name, metadata')
     .eq('status', 'draft')
-    .eq("metadata->>'draft_token'", token)
+    .eq("metadata->>draft_token", token)
     .single();
 
   if (error || !submission) {
@@ -87,7 +87,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     .from('spotlight_submissions')
     .select('id, metadata')
     .eq('status', 'draft')
-    .eq("metadata->>'draft_token'", token)
+    .eq("metadata->>draft_token", token)
     .single();
 
   if (findError || !submission) {
