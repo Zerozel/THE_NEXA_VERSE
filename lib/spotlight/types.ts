@@ -253,5 +253,91 @@ export type TrackingErrorResponse = {
   error: string;
   code: TrackingErrorCode;
 };
+
+
+// ── PHASE 4: ADMIN REVIEW TYPES ──────────────────────────────────────────
+
+export type ReviewAction = 'approved' | 'rejected' | 'flagged';
+
+export type ReviewLogEntry = {
+  id: string;
+  action: string;
+  reviewer_email: string;
+  note: string | null;
+  created_at: string;
+};
+
+export type SubmissionQueueItem = {
+  id: string;
+  participant_name: string | null;
+  category: string | null;
+  status: SpotlightSubmissionStatus;
+  submitted_at: string | null;
+  created_at: string;
+};
+
+export type SubmissionQueueResponse = {
+  items: SubmissionQueueItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+};
+
+export type SubmissionAnswerGroup = {
+  group_title: string;
+  answers: { question_text: string; answer: string }[];
+};
+
+export type AdminTimelineEvent = {
+  event_label: string;
+  event_description: string | null;
+  created_at: string;
+  is_public: boolean;
+};
+
+export type SubmissionDetail = {
+  id: string;
+  status: SpotlightSubmissionStatus;
+  participant_name: string | null;
+  email: string | null;
+  category: string | null;
+  skills: string[];
+  submitted_at: string | null;
+  agreement_accepted_at: string | null;
+  agreement_version: string | null;
+  rejection_reason: string | null;
+  groups: SubmissionAnswerGroup[];
+  timeline_events: AdminTimelineEvent[];
+  review_logs: ReviewLogEntry[];
+};
+
+export type ReviewActionPayload = {
+  action: ReviewAction;
+  note: string;
+};
+
+export type ReviewActionResponse = {
+  ok: true;
+  status: SpotlightSubmissionStatus;
+};
+
+export type ReviewErrorCode =
+  | 'unauthorized'
+  | 'not_found'
+  | 'invalid_transition'
+  | 'invalid_input'
+  | 'server_error';
+
+export type ReviewErrorResponse = {
+  error: string;
+  code: ReviewErrorCode;
+};
+
+export type AdminDashboardSummaryData = {
+  pending_count: number;
+  flagged_count: number;
+  approved_count: number;
+  rejected_count: number;
+};
  
 export type FlowPhase = 'questionnaire' | 'review' | 'agreement' | 'submitting';

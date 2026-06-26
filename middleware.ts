@@ -118,6 +118,22 @@ export async function middleware(request: NextRequest) {
     }
   }
 
+  // ── SPOTLIGHT ADMIN API PROTECTION (/api/spotlight/admin/*) ──────────
+  if (pathname.startsWith('/api/spotlight/admin')) {
+    // Return JSON errors instead of redirects for API routes
+    if (!user) {
+      return NextResponse.json({ error: 'Not authenticated.' }, { status: 401 });
+    }
+
+    const isSpotlightAdmin = user.app_metadata?.spotlight_admin === true;
+    if (!isSpotlightAdmin) {
+      return NextResponse.json(
+        { error: 'Not authorized for Spotlight admin actions.' },
+        { status: 403 }
+      );
+    }
+  }
+
   return supabaseResponse;
 }
 
@@ -126,6 +142,7 @@ export const config = {
     '/admin/:path*',
     '/spotlight/admin/:path*',
     '/api/track/:path*',
-    '/api/spotlight/drafts/:path*',   
+    '/api/spotlight/drafts/:path*', 
+    '/api/spotlight/admin/:path*',  
   ],
 };
