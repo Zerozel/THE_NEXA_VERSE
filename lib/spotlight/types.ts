@@ -255,6 +255,158 @@ export type TrackingErrorResponse = {
 };
 
 
+
+// ── PHASE 5A: CONTENT FOUNDATION TYPES ───────────────────────────────────
+
+export type ContentQueueItem = {
+  id: string;
+  submission_id: string;
+  participant_name: string | null;
+  category: string | null;
+  submitted_at: string | null;
+  content_type: string;
+  content_status: string;
+  created_at: string;
+  generation_count: number;          // current_version ?? 0
+  last_generated_at: string | null;  // updated_at when status='generated', else null
+
+};
+
+export type ContentQueueResponse = {
+  items: ContentQueueItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+};
+
+export type ContentItemDetail = {
+  id: string;
+  submission_id: string;
+  participant_name: string | null;
+  category: string | null;
+  submission_status: SpotlightSubmissionStatus | null;
+  submitted_at: string | null;
+  content_type: string;
+  content_status: string;
+  created_at: string;
+  updated_at: string;
+  has_versions: boolean;
+  version_count: number;
+};
+
+export type ContentMetricsData = {
+  pending_generation: number;
+  generated_items: number;  // Phase 5B-2: real count
+  total_versions: number;   // Phase 5B-2: real count
+};
+
+
+// ── PHASE 5B-2: WORKSPACE TYPES ───────────────────────────────────────────
+
+/**
+ * A single version row from spotlight_content_versions, with its
+ * generation_metadata parsed from JSONB into a typed struct.
+ * Append-only by database constraint (no UPDATE/DELETE possible).
+ */
+export type ContentVersion = {
+  id: string;
+  content_item_id: string;
+  version_number: number;
+  body: string;
+  is_generated: boolean;
+  generation_metadata: GenerationMetadata | null; // null for human-edited versions
+  created_at: string;
+};
+
+/**
+ * Full workspace data for a single content item. Loaded by
+ * fetchContentWorkspace() — heavier than ContentItemDetail, designed
+ * for the generation workspace page specifically.
+ */
+export type ContentWorkspaceDetail = {
+  // ── Item identity ────────────────────────────────────────────────────────
+  id: string;
+  submission_id: string;
+  content_type: string;   // format field
+  content_status: string;
+  created_at: string;
+  updated_at: string;
+  // ── Generation tracking ──────────────────────────────────────────────────
+  generator_version: string | null;       // e.g. 'gemini:gemini-2.5-flash'
+  current_version_number: number | null;  // latest version_number (= generation count)
+  generation_count: number;               // 0 if never generated
+  last_generated_at: string | null;       // from latest version's metadata or created_at
+  // ── Submission owner info ────────────────────────────────────────────────
+  participant_name: string | null;
+  category: string | null;
+  submission_status: string | null;
+  submitted_at: string | null;
+  // ── Versions ─────────────────────────────────────────────────────────────
+  has_versions: boolean;
+  version_count: number;
+  latest_version: ContentVersion | null;
+  all_versions: ContentVersion[];         // newest-first
+};
+
+
+// ── PHASE 5B-1: GENERATION TYPES ──────────────────────────────────────────
+
+/**
+ * Structured submission data, shaped for prompt builders. Named fields
+ * cover the questionnaire answers prompts most commonly need; rawResponses
+ * is the completeness fallback — anything not promoted to a named field
+ * still arrives here keyed by question_key, so a future prompt can always
+ * reach it without a code change to contentContext.ts.
+ */
+export type GenerationContext = {
+  participantName: string | null;
+  displayName: string | null;
+  role: string | null;
+  location: string | null;
+  category: string | null;
+  skills: string[];
+  backgroundStory: string | null;
+  originStory: string | null;
+  biggestChallenge: string | null;
+  proudestMoment: string | null;
+  businessName: string | null;
+  whatYouDo: string | null;
+  whatMakesYouDifferent: string | null;
+  whoYouHelp: string | null;
+  yourVision: string | null;
+  yourMotivation: string | null;
+  whatYouNeed: string | null;
+  messageToCommunity: string | null;
+  collaborationOpen: string | null;
+  oneThingRemembered: string | null;
+  rawResponses: Record<string, string>;
+};
+
+export type GenerationMetadata = {
+  provider: string;
+  model: string;
+  prompt_version: string;
+  generated_at: string;
+  generation_duration_ms: number;
+};
+
+export type GenerationErrorCode =
+  | 'missing_content_item'
+  | 'missing_submission'
+  | 'invalid_content_type'
+  | 'invalid_prompt'
+  | 'provider_failure'
+  | 'generation_timeout';
+
+export type GenerationResult = {
+  content_item_id: string;
+  version_id: string;
+  version_number: number;
+  format: string;
+  body: string;
+  status: 'generated';
+  metadata: GenerationMetadata;
+};
 // ── PHASE 4: ADMIN REVIEW TYPES ──────────────────────────────────────────
 
 export type ReviewAction = 'approved' | 'rejected' | 'flagged';

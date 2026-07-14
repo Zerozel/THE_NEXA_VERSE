@@ -1,14 +1,19 @@
-// app/spotlight/admin/page.tsx — SERVER COMPONENT
+// app/spotlight/admin/page.tsx — SERVER COMPONENT (updated)
 import Link from 'next/link';
 import { createAdminClient } from '@/lib/supabase-server';
 import { getAdminDashboardSummary } from '@/lib/spotlight/adminReview';
-import AdminDashboardSummary from '@/components/spotlight/admin/AdminDashboardSummary';
+import { getContentMetrics }         from '@/lib/spotlight/content';
+import AdminDashboardSummary  from '@/components/spotlight/admin/AdminDashboardSummary';
+import ContentMetricsSummary  from '@/components/spotlight/admin/ContentMetricsSummary';
 
 export const dynamic = 'force-dynamic';
 
 export default async function SpotlightAdminDashboard() {
   const db = createAdminClient();
-  const summary = await getAdminDashboardSummary(db);
+  const [summary, contentMetrics] = await Promise.all([
+    getAdminDashboardSummary(db),
+    getContentMetrics(db),
+  ]);
 
   return (
     <div>
@@ -20,6 +25,7 @@ export default async function SpotlightAdminDashboard() {
       </p>
 
       <AdminDashboardSummary summary={summary} />
+      <ContentMetricsSummary metrics={contentMetrics} />
 
       <Link
         href="/spotlight/admin/submissions"

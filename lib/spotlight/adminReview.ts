@@ -48,7 +48,7 @@ export async function getAdminDashboardSummary(
 
 type ProfileFacts = { category: string | null; skills: string[] };
 
-async function fetchProfileFacts(
+export async function fetchProfileFacts(
   db: SupabaseClient,
   submissionIds: string[],
 ): Promise<Record<string, ProfileFacts>> {
@@ -274,3 +274,4 @@ export async function getSubmissionDetail(
     })),
   };
 }
+
