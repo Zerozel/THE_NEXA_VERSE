@@ -13,8 +13,9 @@ const STATUS_OPTIONS = [
   { value: '',                   label: 'All Statuses' },
   { value: 'pending_generation', label: 'Pending Generation' },
   { value: 'generated',          label: 'Generated' },
-  { value: 'reviewed',           label: 'Reviewed' },
   { value: 'approved',           label: 'Approved' },
+  { value: 'needs_revision',     label: 'Needs Revision' },
+  { value: 'rejected',           label: 'Rejected' },
   { value: 'queued',             label: 'Queued' },
   { value: 'published',          label: 'Published' },
 ];
@@ -109,9 +110,11 @@ export default function ContentQueue() {
       {CONTENT_TYPE_LABELS[item.content_type as keyof typeof CONTENT_TYPE_LABELS] ?? item.content_type}
     </p>
     <span className={`inline-block mt-0.5 text-[0.65rem] font-bold px-2 py-0.5 rounded-full
-      ${item.content_status === 'generated'
-        ? 'bg-green-100 text-green-700'
-        : 'bg-blue-100 text-blue-700'}`}
+			${item.content_status === 'approved'        ? 'bg-green-100 text-green-700'  :
+			item.content_status === 'needs_revision'  ? 'bg-amber-100 text-amber-700'  :
+			item.content_status === 'rejected'        ? 'bg-red-100 text-red-600'      :
+			item.content_status === 'generated'       ? 'bg-blue-100 text-blue-700'    :
+                                                'bg-gray-100 text-gray-600'}`}
     >
       {CONTENT_STATUS_LABELS[item.content_status as keyof typeof CONTENT_STATUS_LABELS] ?? item.content_status}
     </span>

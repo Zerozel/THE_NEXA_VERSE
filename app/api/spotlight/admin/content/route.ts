@@ -14,7 +14,10 @@ import { getContentQueue }           from '@/lib/spotlight/content';
 
 export const dynamic = 'force-dynamic';
 
-const VALID_STATUSES = ['pending_generation', 'generated', 'reviewed', 'approved', 'queued', 'published'];
+const VALID_STATUSES = [
+  'pending_generation', 'generated', 'approved',
+  'needs_revision', 'rejected', 'queued', 'published',
+];
 
 export async function GET(req: NextRequest) {
   try {

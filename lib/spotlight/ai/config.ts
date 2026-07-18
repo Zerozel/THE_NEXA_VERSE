@@ -14,7 +14,7 @@ export const AI_PROVIDERS = {
 export type AIProviderName = typeof AI_PROVIDERS[keyof typeof AI_PROVIDERS];
 
 /** The single place the Gemini model name is written. */
-export const GEMINI_MODEL = 'gemini-2.5-flash';
+export const GEMINI_MODEL = 'gemini-flash-lite-latest';
 
 /** Which provider getAIProvider() resolves to. Change this to switch providers. */
 export const ACTIVE_PROVIDER: AIProviderName = AI_PROVIDERS.GEMINI;

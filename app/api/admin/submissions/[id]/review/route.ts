@@ -17,7 +17,7 @@ import type { ReviewActionPayload, ReviewErrorResponse } from '@/lib/spotlight/t
 
 type Params = { params: { id: string } };
 
-const VALID_ACTIONS = ['approved', 'rejected', 'flagged'] as const;
+const VALID_ACTIONS: string[] = ['approved', 'rejected', 'flagged'];
 
 function isValidUuid(id: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);

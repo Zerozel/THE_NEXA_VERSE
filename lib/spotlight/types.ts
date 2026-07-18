@@ -298,6 +298,9 @@ export type ContentMetricsData = {
   pending_generation: number;
   generated_items: number;  // Phase 5B-2: real count
   total_versions: number;   // Phase 5B-2: real count
+  approved_items:     number;   // Phase 5C addition
+  needs_revision:     number;   // Phase 5C addition
+  rejected_items:     number;   // Phase 5C addition
 };
 
 
@@ -341,11 +344,15 @@ export type ContentWorkspaceDetail = {
   category: string | null;
   submission_status: string | null;
   submitted_at: string | null;
+  
+  approved_version_id: string | null;
+  
   // ── Versions ─────────────────────────────────────────────────────────────
   has_versions: boolean;
   version_count: number;
-  latest_version: ContentVersion | null;
-  all_versions: ContentVersion[];         // newest-first
+  all_versions: ReviewedVersion[];
+  latest_version: ReviewedVersion | null;
+  review_history: ContentReviewLog[];
 };
 
 
@@ -407,9 +414,44 @@ export type GenerationResult = {
   status: 'generated';
   metadata: GenerationMetadata;
 };
+
+
+
+// ── PHASE 5C: REVIEW TYPES ────────────────────────────────────────────────
+
+export type ReviewAction = 'approved' | 'rejected' | 'flagged' | 'needs_revision';
+
+/** Derived at query time — never stored directly on spotlight_content_versions */
+export type VersionReviewStatus = 'generated' | 'approved' | 'rejected' | 'needs_revision';
+
+export type ContentReviewLog = {
+  id: string;
+  content_item_id: string;
+  version_id: string;
+  action: ReviewAction;
+  review_note: string;
+  reviewer_id: string | null;
+  reviewer_email: string;
+  created_at: string;
+  // Joined on fetch:
+  version_number?: number;
+};
+
+/**
+ * A content version enriched with its derived review status.
+ * Returned by fetchContentWorkspace() — replaces the plain ContentVersion
+ * in ContentWorkspaceDetail.all_versions.
+ */
+export type ReviewedVersion = ContentVersion & {
+  review_status: VersionReviewStatus;
+  is_approved_version: boolean;
+  latest_review: ContentReviewLog | null;
+};
+
+
 // ── PHASE 4: ADMIN REVIEW TYPES ──────────────────────────────────────────
 
-export type ReviewAction = 'approved' | 'rejected' | 'flagged';
+
 
 export type ReviewLogEntry = {
   id: string;

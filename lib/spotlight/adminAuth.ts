@@ -62,3 +62,43 @@ export function adminErrorResponse(err: unknown): NextResponse {
   console.error('[admin route]', err);
   return NextResponse.json({ error: 'Something went wrong.' }, { status: 500 });
 }
+
+/**
+ * Validates the current user is a Spotlight admin AND returns their
+ * identity for audit log writes. Call this in any route that needs to
+ * record who performed an action.
+ *
+ * Throws AdminAuthError (same as requireSpotlightAdmin) on failure.
+ * On success returns { id, email } for use in review log inserts.
+ */
+export async function getAuthenticatedAdmin(): Promise<{ id: string; email: string }> {
+  const cookieStore = cookies();
+  const supabase = createServerClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+  {
+    cookies: {
+      get:    (name) => cookieStore.get(name)?.value,
+      set:    () => {},
+      remove: () => {},
+    },
+  },
+);
+  const { data: { user }, error } = await supabase.auth.getUser();
+
+  if (error || !user) {
+    throw new AdminAuthError('Not authenticated.', 401);
+  }
+
+  const isAdmin = user.app_metadata?.spotlight_admin === true;
+  if (!isAdmin) {
+    throw new AdminAuthError('Not authorized for Spotlight admin actions.', 403);
+  }
+
+  const email = user.email;
+  if (!email) {
+    throw new AdminAuthError('Admin account has no email address — cannot record reviewer identity.', 403);
+  }
+
+  return { id: user.id, email };
+}

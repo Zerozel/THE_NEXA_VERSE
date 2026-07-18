@@ -21,6 +21,11 @@ import type {
   SpotlightSubmissionStatus,
 } from './types';
 
+import {
+  fetchReviewHistory,
+  enrichVersionsWithReviewStatus,
+} from './contentReview';
+
 export class ContentServiceError extends Error {
   code: string;
   constructor(message: string, code: string) {
@@ -203,25 +208,23 @@ export async function getContentItemDetail(
 // instead of fake counts — see ContentMetricsSummary below.
 
 export async function getContentMetrics(db: SupabaseClient): Promise<ContentMetricsData> {
-  // Three parallel counts — none are expensive at current scale.
-  const [pendingRes, generatedRes, versionsRes] = await Promise.all([
-    db
-      .from('spotlight_content_items')
-      .select('id', { count: 'exact', head: true })
-      .eq('status', 'pending_generation'),
-    db
-      .from('spotlight_content_items')
-      .select('id', { count: 'exact', head: true })
-      .eq('status', 'generated'),
-    db
-      .from('spotlight_content_versions')
-      .select('id', { count: 'exact', head: true }),
-  ]);
+  const [pendingRes, generatedRes, approvedRes, needsRevisionRes, rejectedRes, versionsRes] =
+    await Promise.all([
+      db.from('spotlight_content_items').select('id', { count: 'exact', head: true }).eq('status', 'pending_generation'),
+      db.from('spotlight_content_items').select('id', { count: 'exact', head: true }).eq('status', 'generated'),
+      db.from('spotlight_content_items').select('id', { count: 'exact', head: true }).eq('status', 'approved'),
+      db.from('spotlight_content_items').select('id', { count: 'exact', head: true }).eq('status', 'needs_revision'),
+      db.from('spotlight_content_items').select('id', { count: 'exact', head: true }).eq('status', 'rejected'),
+      db.from('spotlight_content_versions').select('id', { count: 'exact', head: true }),
+    ]);
 
   return {
-    pending_generation: pendingRes.count ?? 0,
-    generated_items:   generatedRes.count ?? 0,
-    total_versions:    versionsRes.count ?? 0,
+    pending_generation: pendingRes.count   ?? 0,
+    generated_items:   generatedRes.count  ?? 0,
+    approved_items:    approvedRes.count    ?? 0,
+    needs_revision:    needsRevisionRes.count ?? 0,
+    rejected_items:    rejectedRes.count    ?? 0,
+    total_versions:    versionsRes.count    ?? 0,
   };
 }
 
@@ -238,73 +241,83 @@ export async function fetchContentWorkspace(
   db: SupabaseClient,
   id: string,
 ): Promise<ContentWorkspaceDetail | null> {
-  // ── 1. Content item — with generation columns ─────────────────────────
+  // ── 1. Content item — with review + generation columns ────────────────
   const { data: item, error: itemError } = await db
     .from('spotlight_content_items')
-    .select('id, submission_id, format, status, created_at, updated_at, current_version, generator_version')
+    .select(`
+      id, submission_id, format, status, created_at, updated_at,
+      current_version, generator_version, approved_version_id,
+      approved_by, approved_at
+    `)
     .eq('id', id)
     .maybeSingle();
 
   if (itemError || !item) return null;
 
-  // ── 2. Submission + profile facts — parallel ──────────────────────────
-  const [submissionRes, factsMap] = await Promise.all([
+  // ── 2. Submission + profile facts + versions + review history — parallel
+  const [submissionRes, factsMap, versionRows, reviewHistory] = await Promise.all([
     db
       .from('spotlight_submissions')
       .select('id, participant_name, submitted_at, status')
       .eq('id', item.submission_id)
       .maybeSingle(),
     fetchProfileFacts(db, [item.submission_id]),
+    db
+      .from('spotlight_content_versions')
+      .select('id, content_item_id, version_number, body, is_generated, generation_metadata, created_at')
+      .eq('content_item_id', id)
+      .order('version_number', { ascending: false }),
+    fetchReviewHistory(db, id),
   ]);
 
   const submission = submissionRes.data;
-  const facts = factsMap[item.submission_id] ?? { category: null, skills: [] };
+  const facts      = factsMap[item.submission_id] ?? { category: null, skills: [] };
 
-  // ── 3. All versions — newest first ─────────────────────────────────────
-  const { data: versionRows } = await db
-    .from('spotlight_content_versions')
-    .select('id, content_item_id, version_number, body, is_generated, generation_metadata, created_at')
-    .eq('content_item_id', id)
-    .order('version_number', { ascending: false });
-
-  const allVersions: ContentVersion[] = (versionRows ?? []).map(v => ({
-    id: v.id,
-    content_item_id: v.content_item_id,
-    version_number: v.version_number,
-    body: v.body ?? '',
-    is_generated: v.is_generated ?? false,
+  const rawVersions: ContentVersion[] = (versionRows.data ?? []).map(v => ({
+    id:                  v.id,
+    content_item_id:     v.content_item_id,
+    version_number:      v.version_number,
+    body:                v.body ?? '',
+    is_generated:        v.is_generated ?? false,
     generation_metadata: (v.generation_metadata as GenerationMetadata | null) ?? null,
-    created_at: v.created_at,
+    created_at:          v.created_at,
   }));
 
-  const latestVersion = allVersions[0] ?? null;
-  const versionCount  = allVersions.length;
+  // Enrich versions with derived review status (no additional DB queries)
+  const allVersions = enrichVersionsWithReviewStatus(
+    rawVersions,
+    reviewHistory,
+    item.approved_version_id ?? null,
+  );
 
-  // last_generated_at: prefer generation_metadata.generated_at (exact AI call time),
-  // fall back to row created_at (still accurate, just less specific).
-  const lastGeneratedAt =
+  const latestVersion    = allVersions[0] ?? null;
+  const versionCount     = allVersions.length;
+  const generationCount  = item.current_version ?? 0;
+  const lastGeneratedAt  =
     latestVersion?.generation_metadata?.generated_at ??
     latestVersion?.created_at ??
     null;
 
   return {
-    id: item.id,
-    submission_id: item.submission_id,
-    content_type: item.format,
-    content_status: item.status,
-    created_at: item.created_at,
-    updated_at: item.updated_at,
-    generator_version: item.generator_version ?? null,
+    id:                    item.id,
+    submission_id:         item.submission_id,
+    content_type:          item.format,
+    content_status:        item.status,
+    created_at:            item.created_at,
+    updated_at:            item.updated_at,
+    generator_version:     item.generator_version ?? null,
     current_version_number: item.current_version ?? null,
-    generation_count: item.current_version ?? 0,
-    last_generated_at: lastGeneratedAt,
-    participant_name: submission?.participant_name ?? null,
-    category: facts.category,
-    submission_status: submission?.status ?? null,
-    submitted_at: submission?.submitted_at ?? null,
-    has_versions: versionCount > 0,
-    version_count: versionCount,
-    latest_version: latestVersion,
-    all_versions: allVersions,
+    generation_count:      generationCount,
+    last_generated_at:     lastGeneratedAt,
+    approved_version_id:   item.approved_version_id ?? null,
+    participant_name:      submission?.participant_name ?? null,
+    category:              facts.category,
+    submission_status:     submission?.status ?? null,
+    submitted_at:          submission?.submitted_at ?? null,
+    has_versions:          versionCount > 0,
+    version_count:         versionCount,
+    latest_version:        latestVersion,
+    all_versions:          allVersions,
+    review_history:        reviewHistory,
   };
 }
