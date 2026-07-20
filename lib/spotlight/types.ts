@@ -533,5 +533,111 @@ export type AdminDashboardSummaryData = {
   approved_count: number;
   rejected_count: number;
 };
+
+
+// ── PHASE 6A: PUBLIC PROFILE TYPES ───────────────────────────────────────
+
+/** One content section rendered on the public profile page. */
+export type ProfileSection = {
+  format: string;
+  label: string;
+  body: string;
+  version_number: number;
+};
+
+/** Everything the public /spotlight/[slug] page renders. */
+export type PublicProfile = {
+  slug: string;
+  participant_name: string;
+  display_name: string | null;
+  headline: string | null;
+  bio: string | null;
+  profile_image_url: string | null;
+  category: string | null;
+  skills: string[];
+  location: string | null;
+  social_links: Record<string, string>;
+  is_featured: boolean;
+  published_at: string;
+  sections: ProfileSection[];
+  sharing_caption: string | null;
+};
+
+/** One content item's status as seen from the admin profile view. */
+export type AdminProfileContentItem = {
+  id: string;
+  format: string;
+  status: string;
+  has_approved_version: boolean;
+};
+
+/** Full data for the admin profile management page. */
+export type AdminProfileView = {
+  // Submission
+  submission_id: string;
+  participant_name: string | null;
+  category: string | null;
+  submission_status: string;
+  submitted_at: string | null;
+  approved_at: string | null;
+  // Profile (null if not yet created)
+  profile_id: string | null;
+  slug: string | null;
+  is_public: boolean;
+  published_at: string | null;
+  published_by_email: string | null;
+  // Content readiness
+  approved_content_count: number;
+  total_content_count: number;
+  content_items: AdminProfileContentItem[];
+};
+
+/** One row in the admin profiles list. */
+export type AdminProfilesListItem = {
+  submission_id: string;
+  participant_name: string | null;
+  category: string | null;
+  submission_status: string;
+  profile_id: string | null;
+  slug: string | null;
+  is_public: boolean;
+  published_at: string | null;
+  approved_content_count: number;
+  total_content_count: number;
+};
+
+export type AdminProfilesListResponse = {
+  items: AdminProfilesListItem[];
+  total: number;
+  page: number;
+  pageSize: number; 
+};
+
+// ── PHASE 6C: DISTRIBUTION TYPES ─────────────────────────────────────────
+
+export type PublishingChannel = {
+  id: string;
+  channel_key: string;
+  channel_name: string;
+  channel_type: 'whatsapp' | 'telegram' | 'internal' | 'external' | 'api';
+  description: string | null;
+  config: Record<string, unknown>;
+  sort_order: number;
+};
+
+export type DistributionLogEntry = {
+  id: string;
+  profile_id: string;
+  channel_id: string | null;
+  channel_name: string;
+  marked_by_email: string;
+  marked_at: string;
+};
+
+/** Combines a channel with its distribution state for UI rendering. */
+export type ChannelDistributionStatus = PublishingChannel & {
+  is_distributed: boolean;
+  log_entry: DistributionLogEntry | null;
+};
  
 export type FlowPhase = 'questionnaire' | 'review' | 'agreement' | 'submitting';
