@@ -2,14 +2,8 @@
 // components/spotlight/admin/ReviewActionPanel.tsx
 // ─────────────────────────────────────────────────────────────────────────────
 // Two-step confirmation flow: pick an action → write a required note →
-// confirm. This is the UI-level enforcement of "every review action must
-// require a note" — the backend also validates it, but the UI never lets
-// an admin skip straight to a consequence-free click.
-//
-// On success, calls router.refresh() rather than managing local state for
-// the new status — this re-runs the parent Server Component's data fetch,
-// so the updated status, disabled panel, and new history entry all appear
-// from a single source of truth (the database) with no client-side drift.
+// confirm. On approval, redirects to submission detail so the admin sees
+// the newly created content items and "Generate AI Content →" guidance.
 // ─────────────────────────────────────────────────────────────────────────────
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -72,7 +66,14 @@ export default function ReviewActionPanel({ submissionId, currentStatus }: Props
         return;
       }
 
-      router.refresh();
+      // On approval, redirect to submission detail so admin sees the
+      // content items that were just created and the "Generate AI Content" link.
+      // On reject/flag, refresh to show updated status in-place.
+      if (pendingAction === 'approved') {
+        router.push(`/spotlight/admin/submissions/${submissionId}`);
+      } else {
+        router.refresh();
+      }
     } catch {
       setError('Network error. Please try again.');
       setSubmitting(false);
@@ -107,7 +108,7 @@ export default function ReviewActionPanel({ submissionId, currentStatus }: Props
           </p>
           <SpotlightTextarea
             label="Review Note (required)"
-            placeholder="Explain your decision \u2014 this is stored permanently in the audit log\u2026"
+            placeholder="Explain your decision — this is stored permanently in the audit log…"
             value={note}
             onChange={e => setNote(e.target.value)}
             rows={4}
