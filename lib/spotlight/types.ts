@@ -262,14 +262,16 @@ export type ContentQueueItem = {
   id: string;
   submission_id: string;
   participant_name: string | null;
+  format: string;           // ← changed from content_type
+  status: string;           // ← changed from content_status
+  title: string | null;     // ← NEW
   category: string | null;
   submitted_at: string | null;
-  content_type: string;
-  content_status: string;
   created_at: string;
-  generation_count: number;          // current_version ?? 0
-  last_generated_at: string | null;  // updated_at when status='generated', else null
-
+  updated_at: string;       // ← NEW
+  current_version: number | null; // ← NEW
+  generation_count: number;
+  last_generated_at: string | null;
 };
 
 export type ContentQueueResponse = {

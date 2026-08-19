@@ -1,23 +1,15 @@
 // app/api/spotlight/admin/content/route.ts
 // ─────────────────────────────────────────────────────────────────────────────
-// GET /api/spotlight/admin/content?page=0&pageSize=20&search=...&status=...
-// Returns the paginated, searchable, status-filterable content queue.
-// Mirrors Phase 4's submissions queue route structure exactly.
-// Spotlight-admin only — already covered by Phase 4's
-// '/api/spotlight/admin/:path*' middleware matcher, no middleware changes
-// needed in this phase.
+// GET /api/spotlight/admin/content
+// Returns paginated content items for the admin content queue.
 // ─────────────────────────────────────────────────────────────────────────────
 import { NextRequest, NextResponse } from 'next/server';
-import { createAdminClient }         from '@/lib/supabase-server';
+import { createAdminClient } from '@/lib/supabase-server';
 import { requireSpotlightAdmin, adminErrorResponse } from '@/lib/spotlight/adminAuth';
-import { getContentQueue }           from '@/lib/spotlight/content';
+import { getContentQueue } from '@/lib/spotlight/content';
+import type { ContentQueueResponse } from '@/lib/spotlight/types';
 
 export const dynamic = 'force-dynamic';
-
-const VALID_STATUSES = [
-  'pending_generation', 'generated', 'approved',
-  'needs_revision', 'rejected', 'queued', 'published',
-];
 
 export async function GET(req: NextRequest) {
   try {
@@ -27,21 +19,21 @@ export async function GET(req: NextRequest) {
   }
 
   const { searchParams } = new URL(req.url);
-  const page     = Math.max(parseInt(searchParams.get('page') ?? '0', 10) || 0, 0);
-  const pageSize = Math.min(Math.max(parseInt(searchParams.get('pageSize') ?? '20', 10) || 20, 1), 50);
-  const search   = (searchParams.get('search') ?? '').trim().slice(0, 100);
-  const status   = (searchParams.get('status') ?? '').trim();
+  const page = parseInt(searchParams.get('page') || '0');
+  const pageSize = Math.min(parseInt(searchParams.get('pageSize') || '20'), 50);
+  const search = searchParams.get('search') || '';  // ← default to empty string
+  const status = searchParams.get('status') || '';  // ← default to empty string
 
-  if (status && !VALID_STATUSES.includes(status)) {
-    return NextResponse.json({ error: 'Invalid status filter.' }, { status: 400 });
-  }
+  const db = createAdminClient();
 
   try {
-    const db     = createAdminClient();
     const result = await getContentQueue(db, page, pageSize, search, status);
-    return NextResponse.json(result);
-  } catch (err) {
-    console.error('[GET /api/spotlight/admin/content]', err);
-    return NextResponse.json({ error: 'Could not load the content queue.' }, { status: 500 });
+    return NextResponse.json(result as ContentQueueResponse);
+  } catch (error) {
+    console.error('[GET /admin/content]', error);
+    return NextResponse.json(
+      { error: 'Failed to load content queue.', code: 'server_error' },
+      { status: 500 }
+    );
   }
 }

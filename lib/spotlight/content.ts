@@ -101,8 +101,16 @@ export async function getContentQueue(
 ): Promise<ContentQueueResponse> {
   let query = db
     .from('spotlight_content_items')
-    // Phase 5B-2: added current_version + updated_at to existing select
-    .select('id, submission_id, format, status, created_at, current_version, updated_at')
+    .select(`
+      id, 
+      submission_id, 
+      format, 
+      status, 
+      title,
+      created_at, 
+      current_version, 
+      updated_at
+    `)
     .order('created_at', { ascending: false })
     .limit(CONTENT_WORKING_SET_CAP);
 
@@ -127,17 +135,19 @@ export async function getContentQueue(
   let items: ContentQueueItem[] = (rows ?? []).map(r => {
     const sub = submissionMap.get(r.submission_id);
     return {
-      id:               r.id,
-      submission_id:    r.submission_id,
+      id: r.id,
+      submission_id: r.submission_id,
       participant_name: sub?.participant_name ?? null,
-      category:         factsMap[r.submission_id]?.category ?? null,
-      submitted_at:     sub?.submitted_at ?? null,
-      content_type:     r.format,
-      content_status:   r.status,
-      created_at:       r.created_at,
-      // Phase 5B-2 generation fields:
-      generation_count:    r.current_version ?? 0,
-      last_generated_at:   r.status === 'generated' ? (r.updated_at ?? null) : null,
+      format: r.format,
+      status: r.status,
+      title: r.title || null,
+      category: factsMap[r.submission_id]?.category ?? null,
+      submitted_at: sub?.submitted_at ?? null,
+      created_at: r.created_at,
+      updated_at: r.updated_at || r.created_at,
+      current_version: r.current_version ?? null,
+      generation_count: r.current_version ?? 0,
+      last_generated_at: r.status === 'generated' ? (r.updated_at ?? null) : null,
     };
   });
 
