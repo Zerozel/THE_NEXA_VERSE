@@ -1,4 +1,3 @@
-// app/spotlight/admin/layout.tsx
 import Link from 'next/link';
 
 export default function SpotlightAdminLayout({ children }: { children: React.ReactNode }) {
@@ -17,10 +16,28 @@ export default function SpotlightAdminLayout({ children }: { children: React.Rea
           </span>
         </Link>
         <div className="flex items-center gap-4">
-          <Link href="/spotlight/admin/submissions" className="text-gray-300 text-sm font-medium hover:text-white transition-colors">
+          <Link 
+            href="/spotlight/admin/submissions" 
+            className="text-gray-300 text-sm font-medium hover:text-white transition-colors"
+          >
             Review Queue
           </Link>
-          <Link href="/spotlight" className="text-gray-500 text-xs hover:text-gray-300 transition-colors">
+          <Link 
+            href="/spotlight/admin/content" 
+            className="text-gray-300 text-sm font-medium hover:text-white transition-colors"
+          >
+            Content Queue
+          </Link>
+          <Link 
+            href="/spotlight/admin/profiles" 
+            className="text-gray-300 text-sm font-medium hover:text-white transition-colors"
+          >
+            Manage Profiles
+          </Link>
+          <Link 
+            href="/spotlight" 
+            className="text-gray-500 text-xs hover:text-gray-300 transition-colors"
+          >
             Exit
           </Link>
         </div>

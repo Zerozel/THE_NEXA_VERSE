@@ -4,8 +4,9 @@
 // Body: { action: 'approved' | 'rejected' | 'flagged', note: string }
 // ─────────────────────────────────────────────────────────────────────────────
 import { NextRequest, NextResponse } from 'next/server';
-import { createAdminClient }         from '@/lib/supabase-server';
+import { createAdminClient } from '@/lib/supabase-server';
 import { requireSpotlightAdmin, adminErrorResponse } from '@/lib/spotlight/adminAuth';
+import { createContentAssetsForSubmission } from '@/lib/spotlight/content';
 import type { ReviewActionPayload, ReviewErrorResponse } from '@/lib/spotlight/types';
 
 type Params = { params: { id: string } };
@@ -79,11 +80,11 @@ export async function POST(req: NextRequest, { params }: Params) {
   const now = new Date().toISOString();
 
   const updatePayload: Record<string, unknown> = {
-    status:      action,
+    status: action,
     reviewer_id: admin.id,
     review_note: trimmedNote,
     reviewed_at: now,
-    updated_at:  now,
+    updated_at: now,
   };
   if (action === 'approved') updatePayload.approved_at = now;
   if (action === 'rejected') updatePayload.rejection_reason = trimmedNote;
@@ -103,12 +104,25 @@ export async function POST(req: NextRequest, { params }: Params) {
     }, 409);
   }
 
+  // ─── NEW: Create content assets if approved ──────────────────────
+  if (action === 'approved') {
+    try {
+      console.log(`[review] Creating content assets for submission ${id}`);
+      await createContentAssetsForSubmission(db, id);
+      console.log(`[review] Content assets created successfully`);
+    } catch (contentError) {
+      console.error('[review] Failed to create content assets:', contentError);
+      // We don't fail the approval if content creation fails, but we log it
+      // The admin can retry from the content queue if needed
+    }
+  }
+
   const { error: logError } = await db.from('spotlight_review_logs').insert({
     submission_id: id,
-    reviewer_id:   admin.id,
+    reviewer_id: admin.id,
     action,
-    note:          trimmedNote,
-    metadata:      { previous_status: 'submitted' },
+    note: trimmedNote,
+    metadata: { previous_status: 'submitted' },
   });
 
   if (logError) {
