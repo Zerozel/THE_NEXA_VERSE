@@ -431,13 +431,17 @@ export default function GenerationWorkspace({
       const data = await res.json() as { ok?: boolean; result?: GenerationResult; error?: string; code?: string };
 
       if (!res.ok) {
-        setGenError(GEN_ERROR_MESSAGES[data.code ?? ''] ?? data.error ?? 'Generation failed unexpectedly.');
-        setGenState('error');
-        return;
-      }
-      if (data.result) setLatestResult(data.result);
-      setGenState('success');
+		setGenError(GEN_ERROR_MESSAGES[data.code ?? ''] ?? data.error ?? 'Generation failed unexpectedly.');
+		setGenState('error');
+		return;
+		}
+	  if (data.result) setLatestResult(data.result);
+	  setGenState('success');
+
+	// Wait a moment for the database to commit before refreshing
+	  setTimeout(() => {
       startTransition(() => { router.refresh(); });
+	  }, 1500);
     } catch {
       setGenError('Network error — could not reach the generation endpoint.');
       setGenState('error');
